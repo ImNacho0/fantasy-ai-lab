@@ -49,10 +49,11 @@ jobs:
 
     - name: Run Database Migrations
       run: |
-        alembic upgrade head
+        PYTHONPATH=.:src alembic upgrade head
       env:
         # Use SQLite for lightweight runner execution
         DATABASE_URL: sqlite:///fantasy_ai.db
+        PYTHONPATH: .:src
 
     - name: Execute Simulation
       run: |
@@ -72,9 +73,11 @@ jobs:
         $CMD
       env:
         DATABASE_URL: sqlite:///fantasy_ai.db
+        PYTHONPATH: .:src
 
     - name: Run Pytest Test Suite
       run: |
-        pytest
+        PYTHONPATH=.:src pytest -q
       env:
         DATABASE_URL: sqlite:///fantasy_ai.db
+        PYTHONPATH: .:src

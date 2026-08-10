@@ -1,17 +1,19 @@
 import random
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Tuple
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 class StrategyConfig(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     name: str
-    risk_tolerance: float = Field(0.5, ge=0.0, le=1.0)
-    points_weight: float = Field(0.5, ge=0.0, le=1.0)
-    value_growth_weight: float = Field(0.5, ge=0.0, le=1.0)
-    cash_weight: float = Field(0.5, ge=0.0, le=1.0)
-    future_weight: float = Field(0.5, ge=0.0, le=1.0)
-    market_weight: float = Field(0.5, ge=0.0, le=1.0)
-    injury_risk_weight: float = Field(0.5, ge=0.0, le=1.0)
+    risk_tolerance: float = Field(0.5, ge=0.0, le=1.0, alias="riskTolerance")
+    points_weight: float = Field(0.5, ge=0.0, le=1.0, alias="pointsWeight")
+    value_growth_weight: float = Field(0.5, ge=0.0, le=1.0, alias="valueGrowthWeight")
+    cash_weight: float = Field(0.5, ge=0.0, le=1.0, alias="cashWeight")
+    future_weight: float = Field(0.5, ge=0.0, le=1.0, alias="futureWeight")
+    market_weight: float = Field(0.5, ge=0.0, le=1.0, alias="marketWeight")
+    injury_risk_weight: float = Field(0.5, ge=0.0, le=1.0, alias="injuryRiskWeight")
 
 
 class BaseStrategy(ABC):
@@ -674,7 +676,7 @@ class RandomBaselineStrategy(BaseStrategy):
         return decisions
 
 
-def get_strategy_by_name(name: str) -> BaseStrategy:
+def get_strategy_by_name(name: str, parameters: Dict[str, Any] = None) -> BaseStrategy:
     configs = {
         "Conservative": StrategyConfig(name="Conservative", risk_tolerance=0.1, points_weight=0.3, value_growth_weight=0.3, cash_weight=0.9, future_weight=0.3, market_weight=0.2, injury_risk_weight=0.9),
         "Aggressive": StrategyConfig(name="Aggressive", risk_tolerance=0.9, points_weight=0.9, value_growth_weight=0.7, cash_weight=0.1, future_weight=0.8, market_weight=0.8, injury_risk_weight=0.1),
@@ -695,6 +697,9 @@ def get_strategy_by_name(name: str) -> BaseStrategy:
         name_mapped = "PointsMaximizer"
 
     config = configs.get(name_mapped, configs["Balanced"])
+    if parameters:
+        # Accept both persisted snake_case and API-friendly camelCase keys.
+        config = config.model_copy(update=parameters)
 
     strategies = {
         "Conservative": ConservativeStrategy,

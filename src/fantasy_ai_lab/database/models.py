@@ -6,12 +6,6 @@ from fantasy_ai_lab.database.connection import Base
 def get_utc_now():
     return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
 
-def get_utc_now():
-    return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
-
-def get_utc_now():
-    return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
-
 class SimulationJob(Base):
     __tablename__ = 'simulation_jobs'
 
@@ -24,6 +18,7 @@ class SimulationJob(Base):
     matchdays = Column(Integer, default=5)
     current_league_idx = Column(Integer, default=0)
     current_matchday_idx = Column(Integer, default=0)
+    checkpoint = Column(JSON, nullable=True)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=get_utc_now)
     updated_at = Column(DateTime, default=get_utc_now, onupdate=get_utc_now)
@@ -239,6 +234,11 @@ class Event(Base):
     severity = Column(String(50), default='info')  # info, warning, extreme
     duration = Column(Integer, default=0)
     impact = Column(Float, default=1.0)
+    probability = Column(Float, default=0.0)
+    uncertainty = Column(Float, default=0.0)
+    consequences = Column(JSON, nullable=True)
+    recovery = Column(JSON, nullable=True)
+    source = Column(String(50), default='random')  # random, scheduled, historical, manual
     is_extreme = Column(Boolean, default=False)
     simulated_at = Column(DateTime, default=get_utc_now)
 
@@ -270,6 +270,9 @@ class Decision(Base):
     amount = Column(Float, nullable=True)
     confidence = Column(Float, default=1.0)
     expected_outcome = Column(JSON, nullable=True)
+    available_actions = Column(JSON, nullable=True)
+    alternative_actions = Column(JSON, nullable=True)
+    situation_id = Column(Integer, ForeignKey('situations.id'), nullable=True)
     strategy_version = Column(String(50), default='v1.0')
     reasoning_factors = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=get_utc_now)
@@ -277,6 +280,7 @@ class Decision(Base):
     league = relationship("League", back_populates="decisions")
     manager = relationship("Manager", back_populates="decisions")
     player = relationship("Player", back_populates="decisions")
+    situation = relationship("Situation", back_populates="decisions", foreign_keys=[situation_id])
     rewards = relationship("Reward", back_populates="decision", cascade="all, delete-orphan")
 
 
@@ -293,18 +297,23 @@ class Situation(Base):
 
     league = relationship("League", back_populates="situations")
     manager = relationship("Manager", back_populates="situations")
+    decisions = relationship("Decision", back_populates="situation", foreign_keys="Decision.situation_id")
+    outcomes = relationship("Outcome", back_populates="situation", cascade="all, delete-orphan")
 
 
 class Outcome(Base):
     __tablename__ = 'outcomes'
 
     id = Column(Integer, primary_key=True)
-    decision_id = Column(Integer, nullable=True) # Weak reference or direct integer
+    decision_id = Column(Integer, ForeignKey('decisions.id'), nullable=True)
     situation_id = Column(Integer, ForeignKey('situations.id'), nullable=True)
     result_data = Column(JSON, nullable=True)
     points_gained = Column(Float, default=0.0)
     wealth_gained = Column(Float, default=0.0)
     created_at = Column(DateTime, default=get_utc_now)
+
+    decision = relationship("Decision", foreign_keys=[decision_id])
+    situation = relationship("Situation", back_populates="outcomes", foreign_keys=[situation_id])
 
 
 class Strategy(Base):
@@ -341,3 +350,61 @@ class Reward(Base):
     created_at = Column(DateTime, default=get_utc_now)
 
     decision = relationship("Decision", back_populates="rewards")
+
+
+class Scenario(Base):
+    __tablename__ = 'scenarios'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(120), unique=True, nullable=False)
+    description = Column(Text, nullable=True)
+    configuration = Column(JSON, nullable=False, default=dict)
+    created_at = Column(DateTime, default=get_utc_now)
+
+
+class KnowledgeCase(Base):
+    __tablename__ = 'knowledge_cases'
+
+    id = Column(Integer, primary_key=True)
+    situation_id = Column(Integer, ForeignKey('situations.id'), nullable=False)
+    decision_id = Column(Integer, ForeignKey('decisions.id'), nullable=False)
+    feature_vector = Column(JSON, nullable=False)
+    sample_weight = Column(Float, default=1.0)
+    created_at = Column(DateTime, default=get_utc_now)
+
+
+class Counterfactual(Base):
+    __tablename__ = 'counterfactuals'
+
+    id = Column(Integer, primary_key=True)
+    decision_id = Column(Integer, ForeignKey('decisions.id'), nullable=False)
+    action_type = Column(String(50), nullable=False)
+    player_id = Column(Integer, ForeignKey('players.id'), nullable=True)
+    result_data = Column(JSON, nullable=False)
+    points_delta = Column(Float, default=0.0)
+    wealth_delta = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=get_utc_now)
+
+
+class Evaluation(Base):
+    __tablename__ = 'evaluations'
+
+    id = Column(Integer, primary_key=True)
+    strategy_name = Column(String(100), nullable=False)
+    strategy_version = Column(String(50), nullable=False)
+    dataset_name = Column(String(100), nullable=False)
+    sample_size = Column(Integer, default=0)
+    metrics = Column(JSON, nullable=False, default=dict)
+    status = Column(String(50), default='candidate')
+    created_at = Column(DateTime, default=get_utc_now)
+
+
+class Tournament(Base):
+    __tablename__ = 'tournaments'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False)
+    configuration = Column(JSON, nullable=False, default=dict)
+    rankings = Column(JSON, nullable=False, default=list)
+    status = Column(String(50), default='created')
+    created_at = Column(DateTime, default=get_utc_now)

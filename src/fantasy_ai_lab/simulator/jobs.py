@@ -1,3 +1,4 @@
+import hashlib
 import traceback
 from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
@@ -68,8 +69,10 @@ class JobService:
                 job.current_league_idx = i
                 db.commit()
 
-                # Generate deterministic sub-seed for this league
-                league_seed = job.seed + i
+                # Derive each league seed from the master seed and unit index,
+                # independent of database IDs or execution order.
+                digest = hashlib.sha256(f"{job.seed}:league:{i}".encode("utf-8")).digest()
+                league_seed = int.from_bytes(digest[:8], "big") % 2_147_483_647
 
                 # Check if this league has already been created (for idempotency on resume)
                 league_name = f"League {i+1} - Job {job.id}"
@@ -94,8 +97,20 @@ class JobService:
                     extreme_scenarios=extreme_scenarios
                 )
 
-                # Persist checkpoint
+                # Persist the completed unit before advancing to the next one.
                 job.leagues_completed = i + 1
+                job.current_league_idx = i + 1
+                job.current_matchday_idx = job.matchdays
+                job.checkpoint = {
+                    "completed_units": job.leagues_completed,
+                    "completed_leagues": [
+                        {"index": n, "seed": int.from_bytes(
+                            hashlib.sha256(f"{job.seed}:league:{n}".encode("utf-8")).digest()[:8], "big"
+                        ) % 2_147_483_647}
+                        for n in range(job.leagues_completed)
+                    ],
+                    "next_league_index": job.leagues_completed,
+                }
                 db.commit()
 
             # Set status to completed
