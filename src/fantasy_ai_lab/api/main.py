@@ -10,7 +10,8 @@ from fantasy_ai_lab.database.connection import get_db, engine, Base
 from fantasy_ai_lab.config import settings
 from fantasy_ai_lab.database.models import (
     SimulationJob, Simulation, League, Manager, Player, Roster, Lineup,
-    Snapshot, Decision, Situation, Outcome, Reward, Event, Transaction
+    Snapshot, Decision, Situation, Outcome, Reward, Event, Transaction,
+    Evaluation, StrategyVersion
 )
 from fantasy_ai_lab.simulator.jobs import JobService
 from fantasy_ai_lab.simulator.snapshots import SnapshotService
@@ -426,12 +427,18 @@ def execute_real_time_simulation():
     return {"status": "success", "message": "On-demand simulation endpoint ready."}
 
 @app.get("/api/v1/strategy/current")
-def get_current_strategy():
-    return {"strategy": "BalancedAgent", "version": "v1.0", "parameters": {"riskTolerance": 0.5}}
+def get_current_strategy(strategy_name: str = Query("Balanced"), db: Session = Depends(get_db)):
+    version = db.query(StrategyVersion).filter_by(strategy_name=strategy_name, is_active=True).order_by(StrategyVersion.id.desc()).first()
+    if not version:
+        return {"strategy": strategy_name, "version": None, "parameters": {}, "status": "unconfigured"}
+    return {"strategy": version.strategy_name, "version": version.version, "parameters": version.parameters or {}, "status": version.lifecycle_status}
 
 @app.get("/api/v1/strategy/history")
-def get_strategy_history():
-    return [{"version": "v1.0", "deployed_at": datetime.datetime.now(datetime.UTC).isoformat()}]
+def get_strategy_history(strategy_name: Optional[str] = Query(None), db: Session = Depends(get_db)):
+    query = db.query(StrategyVersion).order_by(StrategyVersion.created_at.desc())
+    if strategy_name:
+        query = query.filter(StrategyVersion.strategy_name == strategy_name)
+    return [{"strategy": v.strategy_name, "version": v.version, "status": v.lifecycle_status, "is_active": v.is_active, "created_at": v.created_at.isoformat() if v.created_at else None} for v in query.all()]
 
 @app.get("/api/v1/knowledge/similar")
 def search_similar_situations(
