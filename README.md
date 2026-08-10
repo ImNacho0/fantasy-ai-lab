@@ -34,6 +34,17 @@ Este proyecto está estructurado desde el primer día para funcionar con **infra
 - **Contextos y Decisiones Enriquecidos**: Cada decisión guarda las estimaciones previas (`expected_outcome` como puntos, crecimiento y riesgo), el nivel de confianza (entre 0.0 y 1.0), todas las opciones viables (`availableActions`) y alternativas descartadas (`alternativeActions`).
 - **Sistema Multicriterio de Recompensas (Rewards)**: Evalúa cada decisión bajo 4 perfiles independientes y persistidos de manera separada de los resultados físicos (`Outcome`): `points-focused`, `wealth-focused`, `balanced`, y `risk-adjusted`.
 
+## 🧠 Fases posteriores implementadas como primitivas funcionales
+
+- **Fase 3**: eventos extremos adicionales (`MARKET_BOOM`, `TEAM_FORM_COLLAPSE`, `KEY_PLAYER_LOSES_STARTING_ROLE`) con duración, impacto y recuperación.
+- **Fase 4**: memoria persistente idempotente con similitud mixta numérica/categórica, agregación por acción con muestra y outcomes observados, más contrafactuales basados en resultados reales o memoria histórica sin ejecutar acciones.
+- **Fase 5**: evaluación estadística, backtesting, validación por muestra/confianza y ciclo controlado de versiones (`candidate → validated → promoted → archived`).
+- **Fase 6**: adaptador desacoplado y API read-only para snapshots de `fantasy-manager`; nunca ejecuta acciones reales.
+- **Fase 7**: workers acotados, cancelación segura, continuous-training por ciclos y dashboard Render para crear/controlar jobs y observar progreso.
+- **Integración Render → GitHub Actions → Neon**: `POST /api/v1/simulations` crea el job, dispara `simulate.yml` con `job_id` y el dashboard consulta estados/checkpoints persistidos con `DATABASE_URL`.
+
+El detalle está en [docs/phase-2-plus.md](docs/phase-2-plus.md). Estas piezas son infraestructura funcional y testeable; el aprendizaje estadístico avanzado, embeddings y promoción productiva quedan deliberadamente para una iteración posterior con datasets reales.
+
 ---
 
 ## 🛠️ Stack Tecnológico
@@ -121,7 +132,7 @@ PYTHONPATH=src python -m fantasy_ai_lab.simulate --leagues 3 --matchdays 5 --see
 
 ### 4. Levantar la API de FastAPI y el Dashboard Web
 ```bash
-uvicorn src.fantasy_ai_lab.api.main:app --reload --port 8000
+PYTHONPATH=.:src uvicorn fantasy_ai_lab.api.main:app --host 0.0.0.0 --port 8000
 ```
 - **Documentación Swagger**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 - **Dashboard Web**: [http://127.0.0.1:8000/dashboard](http://127.0.0.1:8000/dashboard)
@@ -144,7 +155,7 @@ La API estará accesible en el puerto `8000` y conectada al contenedor PostgreSQ
 La suite completa de tests de integración, reproducción determinista, snapshots y APIs se ejecuta mediante:
 
 ```bash
-PYTHONPATH=. pytest
+PYTHONPATH=.:src pytest -q
 ```
 
 ---
@@ -162,3 +173,4 @@ Para comprender a fondo cada aspecto del laboratorio, consulta los documentos de
 - [Estrategias Configurables (Fase 2)](docs/strategies.md)
 - [Estructura de Decisiones (Fase 2)](docs/decisions.md)
 - [Sistema de Recompensas (Fase 2)](docs/rewards.md)
+- [Fases 2–7 y estado funcional](docs/phase-2-plus.md)

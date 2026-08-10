@@ -3,78 +3,93 @@ name: Fantasy AI Lab Simulation Runner
 on:
   workflow_dispatch:
     inputs:
+      job_id:
+        description: 'Existing Neon SimulationJob ID created by the API'
+        required: true
+        type: string
       leagues:
-        description: 'Total number of leagues to simulate'
+        description: 'Total number of leagues to simulate (used for scheduled/manual standalone runs)'
         required: true
         default: '5'
+        type: string
       matchdays:
         description: 'Number of matchdays per league'
         required: true
         default: '5'
+        type: string
       seed:
-        description: 'Random seed for simulation reproducibility'
+        description: 'Random seed for standalone reproducibility'
         required: true
         default: '123'
+        type: string
       extreme_matchday:
         description: 'Optional matchday to trigger extreme scenario (leave empty for none)'
         required: false
         default: ''
+        type: string
       extreme_scenario:
         description: 'Extreme scenario name'
         required: false
         default: 'STAR_PLAYER_INJURED'
+        type: string
   schedule:
-    # Run once a day at midnight UTC (conservative schedule)
     - cron: '0 0 * * *'
 
+env:
+  DATABASE_URL: ${{ secrets.DATABASE_URL }}
+  ENV: test
+  PYTHONPATH: .:src
+
 jobs:
-  simulate:
-    name: Execute Autonomous Simulation
+  migrate:
+    name: Apply Neon schema migrations
     runs-on: ubuntu-latest
-
+    concurrency:
+      group: fantasy-ai-lab-neon-migrations
+      cancel-in-progress: false
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+      - name: Run Database Migrations
+        run: alembic upgrade head
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
-
-    - name: Install Dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install -e .
-
-    - name: Run Database Migrations
-      run: |
-        alembic upgrade head
-      env:
-        # Use SQLite for lightweight runner execution
-        DATABASE_URL: sqlite:///fantasy_ai.db
-
-    - name: Execute Simulation
-      run: |
-        # Build command based on inputs
-        LEAGUES="${{ github.event.inputs.leagues || '5' }}"
-        MATCHDAYS="${{ github.event.inputs.matchdays || '5' }}"
-        SEED="${{ github.event.inputs.seed || '123' }}"
-        EXTREME_MD="${{ github.event.inputs.extreme_matchday || '' }}"
-        EXTREME_SCENARIO="${{ github.event.inputs.extreme_scenario || 'STAR_PLAYER_INJURED' }}"
-
-        CMD="python -m fantasy_ai_lab.simulate --leagues $LEAGUES --matchdays $MATCHDAYS --seed $SEED"
-        if [ ! -z "$EXTREME_MD" ]; then
-          CMD="$CMD --extreme-matchday $EXTREME_MD --extreme-scenario $EXTREME_SCENARIO"
-        fi
-
-        echo "Running: $CMD"
-        $CMD
-      env:
-        DATABASE_URL: sqlite:///fantasy_ai.db
-
-    - name: Run Pytest Test Suite
-      run: |
-        pytest
-      env:
-        DATABASE_URL: sqlite:///fantasy_ai.db
+  simulate:
+    name: Execute Autonomous Simulation in Neon
+    needs: migrate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Dependencies
+        run: python -m pip install --upgrade pip && pip install -r requirements.txt
+      - name: Execute Simulation
+        env:
+          JOB_ID: ${{ inputs.job_id || '' }}
+          LEAGUES: ${{ inputs.leagues || '5' }}
+          MATCHDAYS: ${{ inputs.matchdays || '5' }}
+          SEED: ${{ inputs.seed || '123' }}
+          EXTREME_MD: ${{ inputs.extreme_matchday || '' }}
+          EXTREME_SCENARIO: ${{ inputs.extreme_scenario || 'STAR_PLAYER_INJURED' }}
+        run: |
+          if [ -n "$JOB_ID" ]; then
+            python -m fantasy_ai_lab.simulate --job-id "$JOB_ID"
+          else
+            CMD="python -m fantasy_ai_lab.simulate --leagues $LEAGUES --matchdays $MATCHDAYS --seed $SEED"
+            if [ -n "$EXTREME_MD" ]; then
+              CMD="$CMD --extreme-matchday $EXTREME_MD --extreme-scenario $EXTREME_SCENARIO"
+            fi
+            echo "Running standalone scheduled simulation"
+            $CMD
+          fi
+      - name: Run Pytest Test Suite
+        run: pytest -q

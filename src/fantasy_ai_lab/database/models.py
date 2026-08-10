@@ -25,6 +25,8 @@ class SimulationJob(Base):
     current_league_idx = Column(Integer, default=0)
     current_matchday_idx = Column(Integer, default=0)
     error_message = Column(Text, nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=get_utc_now)
     updated_at = Column(DateTime, default=get_utc_now, onupdate=get_utc_now)
 
