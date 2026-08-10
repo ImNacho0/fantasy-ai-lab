@@ -32,6 +32,21 @@ def test_api_list_jobs():
     assert response.status_code == 200
     assert isinstance(response.json(), list)
 
+def test_api_knowledge_search_accepts_full_feature_payload():
+    response = client.post(
+        "/api/v1/knowledge/similar",
+        json={
+            "features": {"budget": 12000000.0, "matchday": 14, "mode": "real-world"},
+            "limit": 5,
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["query_features"]["mode"] == "real-world"
+    assert "sample_size" in data
+    assert "ranking" in data
+
+
 def test_api_decision_recommendation():
     # Call the decision integration endpoint
     payload = {

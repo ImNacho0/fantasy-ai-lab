@@ -53,6 +53,18 @@ class DecisionRequest(BaseModel):
 
 class CounterfactualRequest(BaseModel):
     alternatives: List[Dict[str, Any]] = Field(default_factory=list)
+    features: Dict[str, Any] = Field(default_factory=dict)
+    actions: List[str] = Field(default_factory=list)
+    limit: int = Field(100, ge=1, le=1000)
+
+class KnowledgeSearchRequest(BaseModel):
+    features: Dict[str, Any] = Field(default_factory=dict)
+    limit: int = Field(10, ge=1, le=1000)
+    action_type: Optional[str] = None
+    strategy_name: Optional[str] = None
+    strategy_version: Optional[str] = None
+    dataset_name: Optional[str] = None
+    max_distance: Optional[float] = Field(None, ge=0.0)
 
 class EvaluationRequest(BaseModel):
     strategy_name: str
@@ -307,67 +319,41 @@ def fork_snapshot(id: int, payload: ForkRequest, db: Session = Depends(get_db)):
 
 @app.post("/api/v1/decision")
 def get_recommendation(payload: DecisionRequest, db: Session = Depends(get_db)):
-    """
-    API prepared for integration with 'fantasy-manager'.
-    Returns strategy recommendations based on historical simulated situations.
-    """
-    # Simple semantic/pattern search mockup:
-    # 1. Inspect target player from request context
+    """Return a read-only recommendation grounded in persisted similar cases."""
     player_id = payload.context.get("playerId", "unknown")
     player_name = payload.context.get("playerName", "unnamed")
-    player_price = payload.context.get("playerPrice", 1000000.0)
-    historical_memory = KnowledgeService.recommend(
-        db,
-        {
-            "playerPrice": float(player_price),
-            "budget": float(payload.team.get("budget", payload.context.get("budget", 0.0)) or 0.0),
-            "matchday": float(payload.leagueState.get("matchday", 0.0) or 0.0),
-        },
-        limit=10,
-    )
-
-    # 2. Check the DB for similar decisions in past simulations to base recommendation
-    similar_decisions = db.query(Decision).filter(
-        Decision.action_type == "BUY",
-        Decision.amount >= player_price * 0.9,
-        Decision.amount <= player_price * 1.1
-    ).limit(3).all()
-
-    # If we have similar historical cases, compile results
-    outcomes_summary = []
-    total_points_gained = 0.0
-    for d in similar_decisions:
-        out = db.query(Outcome).filter_by(decision_id=d.id).first()
-        if out:
-            total_points_gained += out.points_gained
-            outcomes_summary.append({
-                "decision_id": d.id,
-                "action": d.action_type,
-                "amount": d.amount,
-                "points_gained": out.points_gained,
-                "wealth_gained": out.wealth_gained
-            })
-
-    # Basic recommendation parameters
-    confidence = 0.82 if similar_decisions else 0.50
-    recommended_action = "BUY" if total_points_gained >= 0 else "HOLD"
-
-    explanation = (
-        f"Based on {len(similar_decisions)} similar historical situations with comparable pricing, "
-        f"buying players around {player_price:,.0f} € resulted in average positive outcome."
-    ) if similar_decisions else "No direct historical match found. Defaulting to standard safety margins."
+    player_price = float(payload.context.get("playerPrice", 1000000.0) or 0.0)
+    query_features = {
+        "playerPrice": player_price,
+        "budget": float(payload.team.get("budget", payload.context.get("budget", 0.0)) or 0.0),
+        "matchday": float(payload.leagueState.get("matchday", 0.0) or 0.0),
+        "roster_count": float(payload.team.get("roster_count", 0.0) or 0.0),
+        "action_context": payload.context.get("action", "BUY"),
+    }
+    historical_memory = KnowledgeService.recommend(db, query_features, limit=10)
+    winner = historical_memory["ranking"][0] if historical_memory["ranking"] else None
+    recommended_action = winner["action"] if winner else "HOLD"
+    confidence = float(winner["decision_confidence"]) if winner else 0.0
+    if winner:
+        explanation = (
+            f"La acción {recommended_action} aparece en {winner['sample_size']} situaciones similares; "
+            f"{winner['outcome_sample_size']} tienen resultado persistido y su recompensa media es "
+            f"{winner['average_reward']}."
+        )
+    else:
+        explanation = "No hay situaciones históricas comparables; no se inventa una estadística y se recomienda HOLD."
 
     return {
         "recommendedAction": recommended_action,
         "playerId": player_id,
         "playerName": player_name,
-        "amount": round(player_price * 1.05, -4),
+        "amount": round(player_price * 1.05, -4) if recommended_action == "BUY" else None,
         "confidence": confidence,
         "explanation": explanation,
-        "similarCases": outcomes_summary,
+        "similarCases": historical_memory["cases"],
         "sampleSize": historical_memory["sample_size"],
         "historicalMemory": historical_memory,
-        "strategyVersion": "v1.0"
+        "strategyVersion": "v1.0",
     }
 
 @app.post("/api/v1/decisions/{id}/counterfactuals")
@@ -375,7 +361,17 @@ def create_counterfactuals(id: int, payload: CounterfactualRequest, db: Session 
     decision = db.query(Decision).filter_by(id=id).first()
     if not decision:
         raise HTTPException(status_code=404, detail="Decision not found")
-    results = CounterfactualService.evaluate(db, decision, payload.alternatives)
+    CounterfactualService.evaluate(db, decision, payload.alternatives)
+    db.commit()
+    return CounterfactualService.compare(db, id)
+
+@app.post("/api/v1/decisions/{id}/counterfactuals/from-memory")
+def create_memory_counterfactuals(id: int, payload: CounterfactualRequest, db: Session = Depends(get_db)):
+    decision = db.query(Decision).filter_by(id=id).first()
+    if not decision:
+        raise HTTPException(status_code=404, detail="Decision not found")
+    actions = payload.actions or ["BUY", "SELL", "HOLD"]
+    CounterfactualService.evaluate_from_memory(db, decision, payload.features, actions, payload.limit)
     db.commit()
     return CounterfactualService.compare(db, id)
 
@@ -420,32 +416,47 @@ def get_strategy_history():
     return [{"version": "v1.0", "deployed_at": datetime.datetime.now(datetime.UTC).isoformat()}]
 
 @app.get("/api/v1/knowledge/similar")
-def search_similar_situations(price: float = Query(1000000.0), limit: int = Query(10, ge=1, le=100), db: Session = Depends(get_db)):
-    """
-    Search database for similar cases of player acquisition and display outcomes.
-    """
-    cases = db.query(Decision).filter(
-        Decision.amount >= price * 0.8,
-        Decision.amount <= price * 1.2
-    ).limit(limit).all()
-
-    results = []
-    for c in cases:
-        out = db.query(Outcome).filter_by(decision_id=c.id).first()
-        reward = db.query(Reward).filter_by(decision_id=c.id).first()
-        results.append({
-            "matchday": c.matchday_number,
-            "action": c.action_type,
-            "bid_amount": c.amount,
-            "points_impact": out.points_gained if out else 0.0,
-            "wealth_impact": out.wealth_gained if out else 0.0,
-            "total_reward": reward.total_reward if reward else 0.0
-        })
-
+def search_similar_situations(
+    price: float = Query(1000000.0),
+    limit: int = Query(10, ge=1, le=1000),
+    action_type: Optional[str] = Query(None),
+    strategy_name: Optional[str] = Query(None),
+    strategy_version: Optional[str] = Query(None),
+    dataset_name: Optional[str] = Query(None),
+    max_distance: Optional[float] = Query(None, ge=0.0),
+    db: Session = Depends(get_db),
+):
+    """Search nearest historical cases and aggregate evidence by action."""
+    features = {"playerPrice": price}
     return {
-        "query_price": price,
-        "sample_size": len(results),
-        "cases": results
+        "query_features": features,
+        **KnowledgeService.recommend(
+            db,
+            features,
+            limit=limit,
+            action_type=action_type,
+            strategy_name=strategy_name,
+            strategy_version=strategy_version,
+            dataset_name=dataset_name,
+            max_distance=max_distance,
+        ),
+    }
+
+@app.post("/api/v1/knowledge/similar")
+def search_similar_situations_post(payload: KnowledgeSearchRequest, db: Session = Depends(get_db)):
+    """Search situations using the complete real-world feature payload."""
+    return {
+        "query_features": payload.features,
+        **KnowledgeService.recommend(
+            db,
+            payload.features,
+            limit=payload.limit,
+            action_type=payload.action_type,
+            strategy_name=payload.strategy_name,
+            strategy_version=payload.strategy_version,
+            dataset_name=payload.dataset_name,
+            max_distance=payload.max_distance,
+        ),
     }
 
 # --- WEB DASHBOARD ---
@@ -487,7 +498,7 @@ def dashboard_view(db: Session = Depends(get_db)):
                 <h1 class="display-5">Laboratorio de Aprendizaje Fantasy</h1>
                 <p class="lead">Simula miles de ligas, refina estrategias de IA, busca situaciones históricas y devuelve recomendaciones.</p>
                 <div class="mt-3">
-                    <span class="badge bg-success py-2 px-3">Modo: Fases 1–3 operativas</span>
+                    <span class="badge bg-success py-2 px-3">Modo: Fases 1–4 operativas</span>
                     <span class="badge bg-light text-dark py-2 px-3 ms-2">Base de Datos: SQL/ORM Configurado</span>
                 </div>
             </div>

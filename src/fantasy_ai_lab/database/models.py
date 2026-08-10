@@ -369,6 +369,9 @@ class KnowledgeCase(Base):
     situation_id = Column(Integer, ForeignKey('situations.id'), nullable=False)
     decision_id = Column(Integer, ForeignKey('decisions.id'), nullable=False)
     feature_vector = Column(JSON, nullable=False)
+    dataset_name = Column(String(100), default='simulation', nullable=False)
+    strategy_name = Column(String(100), nullable=True)
+    strategy_version = Column(String(50), nullable=True)
     sample_weight = Column(Float, default=1.0)
     created_at = Column(DateTime, default=get_utc_now)
 
@@ -383,6 +386,9 @@ class Counterfactual(Base):
     result_data = Column(JSON, nullable=False)
     points_delta = Column(Float, default=0.0)
     wealth_delta = Column(Float, default=0.0)
+    sample_size = Column(Integer, default=0, nullable=False)
+    confidence = Column(Float, default=0.0, nullable=False)
+    source = Column(String(50), default='explicit_estimate', nullable=False)
     created_at = Column(DateTime, default=get_utc_now)
 
 

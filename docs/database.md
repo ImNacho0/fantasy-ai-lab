@@ -32,10 +32,14 @@ El sistema de persistencia utiliza **SQLAlchemy** y soporta de forma nativa:
                     [Outcome]   (Resultados de puntos y riqueza)
                          │
                      [Reward]   (Métricas de recompensa optimizadas)
+                         │
+                    [KnowledgeCase] (vector, dataset, estrategia y evidencia)
+                         │
+                 [Counterfactual] (baseline, delta, muestra y fuente)
 ```
 
 ## Migraciones con Alembic
-Las migraciones del esquema de base de datos están completamente configuradas. Para aplicar los esquemas más recientes a tu base de datos configurada en `DATABASE_URL`:
+Las migraciones del esquema de base de datos están completamente configuradas. La revisión de Fase 4 añade metadatos de dataset/estrategia, un índice único por decisión para evitar casos duplicados y evidencia de contrafactuales. Para aplicar los esquemas más recientes a tu base de datos configurada en `DATABASE_URL`:
 
 ```bash
 alembic upgrade head
