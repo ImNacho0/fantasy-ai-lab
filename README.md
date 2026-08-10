@@ -38,9 +38,9 @@ Este proyecto está estructurado desde el primer día para funcionar con **infra
 
 - **Fase 3**: eventos extremos adicionales (`MARKET_BOOM`, `TEAM_FORM_COLLAPSE`, `KEY_PLAYER_LOSES_STARTING_ROLE`) con duración, impacto y recuperación.
 - **Fase 4**: memoria persistente idempotente con similitud mixta numérica/categórica, agregación por acción con muestra y outcomes observados, más contrafactuales basados en resultados reales o memoria histórica sin ejecutar acciones.
-- **Fase 5**: evaluación por dataset/versión y torneos con ranking y tamaño de muestra; ningún candidato se promociona automáticamente.
-- **Fase 6**: endpoints de contrafactuales, evaluación y torneos en FastAPI.
-- **Fase 7**: worker acotado por lotes con checkpoints persistentes para reanudación en GitHub Actions.
+- **Fase 5**: evaluación estadística, backtesting, validación por muestra/confianza y ciclo controlado de versiones (`candidate → validated → promoted → archived`).
+- **Fase 6**: adaptador desacoplado y API read-only para snapshots de `fantasy-manager`; nunca ejecuta acciones reales.
+- **Fase 7**: workers acotados, cancelación segura, continuous-training por ciclos y dashboard Render para crear/controlar jobs y observar progreso.
 
 El detalle está en [docs/phase-2-plus.md](docs/phase-2-plus.md). Estas piezas son infraestructura funcional y testeable; el aprendizaje estadístico avanzado, embeddings y promoción productiva quedan deliberadamente para una iteración posterior con datasets reales.
 

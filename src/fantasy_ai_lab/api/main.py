@@ -10,7 +10,8 @@ from fantasy_ai_lab.database.connection import get_db, engine, Base
 from fantasy_ai_lab.config import settings
 from fantasy_ai_lab.database.models import (
     SimulationJob, Simulation, League, Manager, Player, Roster, Lineup,
-    Snapshot, Decision, Situation, Outcome, Reward, Event, Transaction
+    Snapshot, Decision, Situation, Outcome, Reward, Event, Transaction,
+    Evaluation, Tournament, StrategyVersion
 )
 from fantasy_ai_lab.simulator.jobs import JobService
 from fantasy_ai_lab.simulator.snapshots import SnapshotService
@@ -19,6 +20,8 @@ from fantasy_ai_lab.simulator.events import EventEngine
 from fantasy_ai_lab.knowledge.memory import KnowledgeService
 from fantasy_ai_lab.training.evaluation import EvaluationService
 from fantasy_ai_lab.training.tournaments import TournamentService
+from fantasy_ai_lab.workers.runner import SimulationWorker
+from fantasy_ai_lab.workers.continuous import ContinuousTrainingWorker
 
 app = FastAPI(
     title="Fantasy AI Lab API",
@@ -43,6 +46,18 @@ class SnapshotCreate(BaseModel):
 
 class ForkRequest(BaseModel):
     new_league_name: str = Field(..., description="Name for the newly forked league")
+
+class RunBatchRequest(BaseModel):
+    max_leagues: int = Field(1, ge=1, le=1000)
+
+class ContinuousCycleRequest(BaseModel):
+    seed: int = 123
+    leagues_total: int = Field(1, ge=1, le=10000)
+    matchdays: int = Field(1, ge=1, le=38)
+    batch_size: int = Field(1, ge=1, le=1000)
+    strategy_name: Optional[str] = None
+    strategy_version: str = "v1.0"
+    configuration: Dict[str, Any] = Field(default_factory=dict)
 
 class DecisionRequest(BaseModel):
     leagueState: Dict[str, Any] = Field(default_factory=dict)
@@ -172,6 +187,49 @@ def run_simulation_job(id: int, background_tasks: BackgroundTasks, db: Session =
     # Execute in FastAPI Background Task
     background_tasks.add_task(run_job_background, job.id)
     return {"status": "running", "message": "Job execution started in background."}
+
+def run_batch_background(job_id: int, max_leagues: int):
+    from fantasy_ai_lab.database.connection import SessionLocal
+    db_session = SessionLocal()
+    try:
+        SimulationWorker.run_batch(db_session, job_id, max_leagues=max_leagues)
+    except Exception as exc:
+        print(f"Bounded batch {job_id} failed: {exc}")
+    finally:
+        db_session.close()
+
+@app.post("/api/v1/simulations/{id}/run-batch")
+def run_simulation_batch(id: int, payload: RunBatchRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    job = db.query(SimulationJob).filter_by(id=id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="SimulationJob not found")
+    if job.status == "running":
+        return {"job_id": id, "status": "running", "message": "Job is already active."}
+    if job.status in ("completed", "failed", "cancelled"):
+        return {"job_id": id, "status": job.status, "message": "Job is finalized."}
+    background_tasks.add_task(run_batch_background, id, payload.max_leagues)
+    return {"job_id": id, "status": "running", "batch_size": payload.max_leagues}
+
+@app.post("/api/v1/simulations/{id}/cancel")
+def cancel_simulation_job(id: int, db: Session = Depends(get_db)):
+    try:
+        job = JobService.cancel_job(db, id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {"job_id": job.id, "status": job.status, "checkpoint": job.checkpoint}
+
+@app.post("/api/v1/training/cycle", status_code=201)
+def run_training_cycle(payload: ContinuousCycleRequest, db: Session = Depends(get_db)):
+    return ContinuousTrainingWorker.run_cycle(
+        db,
+        seed=payload.seed,
+        leagues_total=payload.leagues_total,
+        matchdays=payload.matchdays,
+        batch_size=payload.batch_size,
+        strategy_name=payload.strategy_name,
+        strategy_version=payload.strategy_version,
+        configuration=payload.configuration,
+    )
 
 # --- LEAGUES ENDPOINTS ---
 
@@ -461,7 +519,7 @@ def search_similar_situations_post(payload: KnowledgeSearchRequest, db: Session 
 
 # --- WEB DASHBOARD ---
 
-@app.get("/dashboard", response_class=HTMLResponse)
+@app.get("/dashboard/legacy", response_class=HTMLResponse)
 def dashboard_view(db: Session = Depends(get_db)):
     # Gather statistics
     jobs = db.query(SimulationJob).order_by(SimulationJob.id.desc()).all()
@@ -636,3 +694,70 @@ def dashboard_view(db: Session = Depends(get_db)):
     </html>
     """
     return html_content
+
+
+@app.get("/api/v1/dashboard/overview")
+def dashboard_overview(db: Session = Depends(get_db)):
+    jobs = db.query(SimulationJob).order_by(SimulationJob.id.desc()).limit(25).all()
+    return {
+        "metrics": {
+            "jobs": db.query(SimulationJob).count(),
+            "active_jobs": db.query(SimulationJob).filter(SimulationJob.status.in_(["pending", "running", "partial"])).count(),
+            "completed_leagues": sum(int(job.leagues_completed or 0) for job in jobs),
+            "leagues": db.query(League).count(),
+            "evaluations": db.query(Evaluation).count(),
+            "tournaments": db.query(Tournament).count(),
+        },
+        "jobs": [{
+            "job_id": job.id,
+            "status": job.status,
+            "seed": job.seed,
+            "leagues_completed": job.leagues_completed,
+            "leagues_total": job.leagues_total,
+            "matchdays": job.matchdays,
+            "progress": round((job.leagues_completed / job.leagues_total) * 100, 1) if job.leagues_total else 0.0,
+            "checkpoint": job.checkpoint or {},
+            "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+        } for job in jobs],
+    }
+
+
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard_control_view():
+    return HTMLResponse(content="""
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fantasy AI Lab · Control room</title>
+  <style>
+    :root { color-scheme: dark; --bg:#08111f; --panel:#101d2f; --line:#243752; --muted:#8ea3bd; --text:#edf5ff; --accent:#63e6be; --blue:#71a7ff; --danger:#ff7b86; }
+    * { box-sizing:border-box; } body { margin:0; background:radial-gradient(circle at 80% 0%,#17345a 0,#08111f 42%); color:var(--text); font:15px/1.5 Inter,ui-sans-serif,system-ui,sans-serif; }
+    .shell { max-width:1200px; margin:auto; padding:32px 20px 56px; } header { display:flex; justify-content:space-between; gap:20px; align-items:end; margin-bottom:28px; }
+    h1 { font-size:clamp(2rem,4vw,3.6rem); line-height:1; margin:8px 0 12px; letter-spacing:-.05em; } h2 { margin:0 0 14px; font-size:1.1rem; } p { color:var(--muted); margin:0; } .eyebrow { color:var(--accent); font-weight:700; letter-spacing:.12em; text-transform:uppercase; font-size:.72rem; }
+    .pill { border:1px solid #2b4565; color:var(--blue); border-radius:999px; padding:7px 12px; white-space:nowrap; font-size:.82rem; }
+    .grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:18px; } .card { background:linear-gradient(145deg,rgba(20,38,61,.96),rgba(11,23,39,.96)); border:1px solid var(--line); border-radius:16px; padding:18px; box-shadow:0 14px 40px rgba(0,0,0,.18); } .metric b { display:block; font-size:2rem; margin-top:8px; } .metric span { color:var(--muted); font-size:.78rem; text-transform:uppercase; letter-spacing:.08em; }
+    .layout { display:grid; grid-template-columns:330px 1fr; gap:18px; } label { display:block; color:var(--muted); font-size:.8rem; margin:12px 0 5px; } input { width:100%; padding:10px 11px; border:1px solid var(--line); border-radius:9px; background:#0b1727; color:var(--text); } button { border:0; border-radius:9px; padding:10px 13px; color:#06121d; background:var(--accent); font-weight:700; cursor:pointer; transition:transform .15s,filter .15s; } button:hover { transform:translateY(-1px); filter:brightness(1.08); } button.secondary { color:var(--text); background:#213651; } button.danger { color:#fff; background:#8d3348; } .form-actions { display:flex; gap:8px; margin-top:16px; }
+    table { width:100%; border-collapse:collapse; } th,td { padding:12px 8px; text-align:left; border-bottom:1px solid var(--line); vertical-align:middle; } th { color:var(--muted); font-size:.72rem; text-transform:uppercase; letter-spacing:.06em; } .status { display:inline-flex; align-items:center; gap:6px; border-radius:999px; padding:4px 8px; font-size:.72rem; font-weight:700; } .status.running { color:#08111f; background:var(--accent); } .status.completed { color:#08111f; background:#8cc8ff; } .status.partial,.status.pending { color:#ffe4a3; background:#55441d; } .status.cancelled,.status.failed { color:#ffd7db; background:#542a38; } .bar { height:7px; min-width:90px; border-radius:99px; background:#1b2b43; overflow:hidden; } .bar i { display:block; height:100%; background:linear-gradient(90deg,var(--blue),var(--accent)); border-radius:inherit; } .actions { display:flex; gap:6px; flex-wrap:wrap; } .actions button { padding:7px 9px; font-size:.75rem; } #notice { min-height:24px; color:var(--accent); margin:12px 0; } @media(max-width:850px) { .grid { grid-template-columns:repeat(2,1fr); } .layout { grid-template-columns:1fr; } header { align-items:start; flex-direction:column; } } @media(max-width:520px) { .grid { grid-template-columns:1fr 1fr; } .card { padding:14px; } th:nth-child(2),td:nth-child(2) { display:none; } }
+  </style>
+</head>
+<body>
+<main class="shell">
+  <header><div><div class="eyebrow">Fantasy AI Lab · control room</div><h1>Simulations under control.</h1><p>Launch bounded batches, inspect checkpoints, and monitor progress without executing real Fantasy actions.</p></div><div class="pill">READ / SIMULATE ONLY</div></header>
+  <section class="grid" id="metrics"></section>
+  <div id="notice"></div>
+  <section class="layout">
+    <div class="card"><h2>New simulation job</h2><p>Each batch is checkpointed by league and can be resumed safely.</p><form id="create-form"><label>Master seed<input name="seed" type="number" value="123"></label><label>Leagues<input name="leagues_total" type="number" min="1" value="5"></label><label>Matchdays<input name="matchdays" type="number" min="1" max="38" value="5"></label><div class="form-actions"><button type="submit">Create job</button><button class="secondary" type="button" onclick="refresh()">Refresh</button></div></form></div>
+    <div class="card"><div style="display:flex;justify-content:space-between;gap:12px;align-items:center"><div><h2>Simulation queue</h2><p>Polling persistent state every 5 seconds.</p></div><span class="pill" id="last-update">—</span></div><div style="overflow:auto"><table><thead><tr><th>Job</th><th>Seed</th><th>Progress</th><th>Status</th><th>Controls</th></tr></thead><tbody id="jobs"><tr><td colspan="5">Loading…</td></tr></tbody></table></div></div>
+  </section>
+</main>
+<script>
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+async function refresh(){ const res=await fetch('/api/v1/dashboard/overview'); const data=await res.json(); const m=data.metrics; document.querySelector('#metrics').innerHTML=[['Jobs',m.jobs],['Active',m.active_jobs],['Completed leagues',m.completed_leagues],['Leagues',m.leagues],['Evaluations',m.evaluations],['Tournaments',m.tournaments]].map(x=>`<div class="card metric"><span>${x[0]}</span><b>${x[1]}</b></div>`).join(''); document.querySelector('#jobs').innerHTML=data.jobs.length?data.jobs.map(j=>`<tr><td>#${j.job_id}</td><td><code>${esc(j.seed)}</code></td><td><div style="display:flex;gap:9px;align-items:center"><div class="bar"><i style="width:${j.progress}%"></i></div><small>${j.leagues_completed}/${j.leagues_total}</small></div></td><td><span class="status ${esc(j.status)}">${esc(j.status)}</span></td><td class="actions">${['completed','cancelled','failed'].includes(j.status)?'':`<button onclick="runJob(${j.job_id})">Run batch</button><button class="danger" onclick="cancelJob(${j.job_id})">Cancel</button>`}</td></tr>`).join(''):'<tr><td colspan="5">No jobs yet.</td></tr>'; document.querySelector('#last-update').textContent=new Date().toLocaleTimeString(); }
+async function runJob(id){ const res=await fetch(`/api/v1/simulations/${id}/run-batch`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({max_leagues:1})}); document.querySelector('#notice').textContent=(await res.json()).message||'Batch started'; refresh(); }
+async function cancelJob(id){ const res=await fetch(`/api/v1/simulations/${id}/cancel`,{method:'POST'}); document.querySelector('#notice').textContent=`Job #${id} ${(await res.json()).status}`; refresh(); }
+document.querySelector('#create-form').addEventListener('submit',async(e)=>{e.preventDefault(); const f=new FormData(e.target); const body={seed:Number(f.get('seed')),leagues_total:Number(f.get('leagues_total')),matchdays:Number(f.get('matchdays'))}; const res=await fetch('/api/v1/simulations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}); document.querySelector('#notice').textContent=`Created job #${(await res.json()).job_id}`; refresh();}); refresh(); setInterval(refresh,5000);
+</script>
+</body></html>
+""")

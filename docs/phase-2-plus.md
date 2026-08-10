@@ -43,7 +43,13 @@ La API conserva los endpoints de simulación, snapshots y recomendación y añad
 
 El modo de recomendación es solo lectura/simulación.
 
-## Fase 7: workers y CI
+## Fase 7 — workers acotados y dashboard operativo
+
+`SimulationWorker` mantiene checkpoints por liga, acepta lotes pequeños y permite cancelar un job sin perder la siguiente unidad reanudable. `ContinuousTrainingWorker` ejecuta un solo ciclo de simulación/evaluación por invocación; no crea un proceso infinito y queda preparado para ser llamado por GitHub Actions u otro scheduler.
+
+El dashboard `/dashboard` de Render es una sala de control ligera: crea trabajos, lanza lotes de una liga, cancela trabajos, consulta métricas y actualiza el progreso por polling en `/api/v1/dashboard/overview`. Todas las acciones son de simulación; no hay ejecución contra fantasy-manager. El control de jobs sigue siendo persistente en PostgreSQL mediante `DATABASE_URL`.
+
+: workers y CI
 
 `SimulationWorker.run_batch` limita el número de ligas por invocación y deja un checkpoint persistido con la siguiente unidad de trabajo. Esto permite matrix jobs de GitHub Actions más adelante sin un proceso infinito.
 

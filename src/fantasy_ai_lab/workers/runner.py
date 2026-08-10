@@ -18,7 +18,7 @@ class SimulationWorker:
         job = db.query(SimulationJob).filter_by(id=job_id).first()
         if not job:
             raise ValueError(f"SimulationJob with ID {job_id} not found")
-        if job.status in ("completed", "failed"):
+        if job.status in ("completed", "failed", "cancelled"):
             return job
 
         # JobService already resumes at leagues_completed. The worker limit is

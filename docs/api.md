@@ -8,6 +8,10 @@ La API de FastAPI actúa como la interfaz de consulta y simulación interactiva.
 - **`GET /health`**: Devuelve el estado de disponibilidad y hora UTC actual.
 
 ### 2. Gestión de Trabajos de Simulación (Simulation Jobs)
+- **`POST /api/v1/simulations/{id}/run-batch`**: Ejecuta un lote acotado (`max_leagues`) en segundo plano; cada liga completada persiste su checkpoint.
+- **`POST /api/v1/simulations/{id}/cancel`**: Solicita cancelación segura y conserva la próxima unidad reanudable.
+- **`GET /api/v1/dashboard/overview`**: Devuelve métricas y trabajos recientes para polling del dashboard.
+
 - **`POST /api/v1/simulations`**: Crea un nuevo trabajo de simulación persistente.
 - **`GET /api/v1/simulations`**: Lista todos los trabajos de simulación creados.
 - **`GET /api/v1/simulations/{id}`**: Obtiene el detalle, progreso (checkpoint) y ligas de un trabajo.
@@ -36,3 +40,6 @@ La API de FastAPI actúa como la interfaz de consulta y simulación interactiva.
 - **`POST /api/v1/decisions/{id}/counterfactuals/from-memory`**: deriva alternativas únicamente de outcomes históricos similares.
 - **`POST /api/v1/evaluate`**: calcula métricas de una estrategia y versión sobre un dataset.
 - **`POST /api/v1/tournaments`**: compara versiones y devuelve ranking persistido.
+
+### 7. Continuous training
+- **`POST /api/v1/training/cycle`**: Ejecuta un único ciclo acotado de simulación/evaluación. No inicia procesos infinitos y puede volver a invocarse desde GitHub Actions.
