@@ -29,17 +29,15 @@ Endpoints adicionales:
 - `POST /api/v1/knowledge/similar`: busca con un payload completo de features y filtros.
 - `POST /api/v1/decisions/{id}/counterfactuals/from-memory`: compara alternativas derivadas de memoria histórica.
 
-## Fase 5 — Entrenamiento, evaluación y promoción controlada
-
-La Fase 5 separa explícitamente backtest, validación y promoción. `EvaluationService` calcula medias, desviación estándar, error estándar e intervalo de confianza del 95% por perfil de reward. Una evaluación no cambia estrategias por sí sola.
-
-El registro de `StrategyVersion` sigue el ciclo `candidate → validated → promoted → archived`. Solo una evaluación con estado `validated` puede promoverse, la promoción archiva la versión activa anterior y repetir la operación conserva un único activo. Endpoints: `POST /api/v1/strategies/versions`, `POST /api/v1/evaluate`, `POST /api/v1/validate`, `POST /api/v1/promote` y `GET /api/v1/strategies/versions`.
-
-: evaluación y torneos
+## Fase 5: evaluación y torneos
 
 `EvaluationService` calcula métricas por estrategia/versión/dataset y exige tamaño de muestra para validar candidatos. `TournamentService` ordena versiones por recompensa media con desempate por muestra. No existe promoción automática a producción.
 
-## Fase 6: API
+## Fase 6 — Integración desacoplada
+
+`FantasyManagerAdapter` convierte snapshots externos en features internas sin importar el transporte ni el modelo de datos de `fantasy-manager`. La API expone estado y recomendación en modo `read-only`, devuelve muestra/outcomes/evidencia histórica y declara que la ejecución está deshabilitada y pertenece al sistema externo. No hay cliente de API externo ni operaciones reales en esta fase.
+
+: API
 
 La API conserva los endpoints de simulación, snapshots y recomendación y añade:
 

@@ -20,6 +20,7 @@ from fantasy_ai_lab.simulator.events import EventEngine
 from fantasy_ai_lab.knowledge.memory import KnowledgeService
 from fantasy_ai_lab.training.evaluation import EvaluationService
 from fantasy_ai_lab.training.tournaments import TournamentService
+from fantasy_ai_lab.integration.fantasy_manager import FantasyManagerAdapter
 
 app = FastAPI(
     title="Fantasy AI Lab API",
@@ -77,20 +78,6 @@ class TournamentRequest(BaseModel):
     name: str
     strategies: List[Dict[str, str]]
     dataset_name: str = "all"
-
-class StrategyVersionRequest(BaseModel):
-    strategy_name: str
-    version: str
-    parameters: Dict[str, Any] = Field(default_factory=dict)
-    parent_version: Optional[str] = None
-
-class ValidationRequest(BaseModel):
-    evaluation_id: int
-    minimum_sample_size: int = Field(1, ge=1)
-    baseline_mean: Optional[float] = None
-
-class PromotionRequest(BaseModel):
-    evaluation_id: int
 
 @app.get("/health")
 def health_check():
@@ -369,7 +356,24 @@ def get_recommendation(payload: DecisionRequest, db: Session = Depends(get_db)):
         "sampleSize": historical_memory["sample_size"],
         "historicalMemory": historical_memory,
         "strategyVersion": "v1.0",
+        "mode": FantasyManagerAdapter.MODE,
+        "execution": {"allowed": False, "owner": "fantasy-manager"},
     }
+
+@app.get("/api/v1/integration/fantasy-manager/status")
+def fantasy_manager_integration_status():
+    return {
+        "provider": "fantasy-manager",
+        "mode": FantasyManagerAdapter.MODE,
+        "capabilities": ["snapshot_ingest", "recommendation", "historical_evidence"],
+        "execution": {"allowed": False, "owner": "fantasy-manager"},
+    }
+
+@app.post("/api/v1/integration/fantasy-manager/decision")
+def fantasy_manager_decision(payload: DecisionRequest, db: Session = Depends(get_db)):
+    """Analyze a fantasy-manager snapshot without mutating league state."""
+    snapshot = payload.model_dump(by_alias=True)
+    return FantasyManagerAdapter.recommend(db, snapshot)
 
 @app.post("/api/v1/decisions/{id}/counterfactuals")
 def create_counterfactuals(id: int, payload: CounterfactualRequest, db: Session = Depends(get_db)):
@@ -417,57 +421,6 @@ def evaluate_strategy(payload: EvaluationRequest, db: Session = Depends(get_db))
 def run_tournament(payload: TournamentRequest, db: Session = Depends(get_db)):
     tournament = TournamentService.run(db, payload.name, payload.strategies, payload.dataset_name)
     return {"tournament_id": tournament.id, "status": tournament.status, "rankings": tournament.rankings}
-
-@app.post("/api/v1/strategies/versions", status_code=201)
-def register_strategy_version(payload: StrategyVersionRequest, db: Session = Depends(get_db)):
-    version = EvaluationService.register_candidate(
-        db, payload.strategy_name, payload.version, payload.parameters, payload.parent_version
-    )
-    return {
-        "id": version.id,
-        "strategy_name": version.strategy_name,
-        "version": version.version,
-        "status": version.lifecycle_status,
-        "is_active": version.is_active,
-    }
-
-@app.get("/api/v1/strategies/versions")
-def list_strategy_versions(strategy_name: Optional[str] = Query(None), db: Session = Depends(get_db)):
-    query = db.query(StrategyVersion).order_by(StrategyVersion.strategy_name, StrategyVersion.version)
-    if strategy_name:
-        query = query.filter(StrategyVersion.strategy_name == strategy_name)
-    return [{
-        "id": version.id,
-        "strategy_name": version.strategy_name,
-        "version": version.version,
-        "status": version.lifecycle_status,
-        "is_active": version.is_active,
-        "parent_version": version.parent_version,
-        "promoted_at": version.promoted_at.isoformat() if version.promoted_at else None,
-    } for version in query.all()]
-
-@app.post("/api/v1/validate", status_code=200)
-def validate_strategy(payload: ValidationRequest, db: Session = Depends(get_db)):
-    evaluation = db.query(Evaluation).filter_by(id=payload.evaluation_id).first()
-    if not evaluation:
-        raise HTTPException(status_code=404, detail="Evaluation not found")
-    result = EvaluationService.validate_candidate(
-        db, evaluation, payload.minimum_sample_size, payload.baseline_mean
-    )
-    return {"evaluation_id": result.id, "status": result.status, "sample_size": result.sample_size, "metrics": result.metrics}
-
-@app.post("/api/v1/promote", status_code=200)
-def promote_strategy(payload: PromotionRequest, db: Session = Depends(get_db)):
-    try:
-        version = EvaluationService.promote_candidate(db, payload.evaluation_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    return {
-        "status": "promoted",
-        "strategy_name": version.strategy_name,
-        "version": version.version,
-        "is_active": version.is_active,
-    }
 
 @app.post("/api/v1/simulate")
 def execute_real_time_simulation():
