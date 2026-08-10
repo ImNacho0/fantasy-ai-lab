@@ -10,6 +10,7 @@ from fantasy_ai_lab.agents.base import BaseAgent
 from fantasy_ai_lab.simulator.scoring import ScoringEngine
 from fantasy_ai_lab.simulator.events import EventEngine
 from fantasy_ai_lab.simulator.market import MarketEngine
+from fantasy_ai_lab.knowledge.memory import KnowledgeService
 
 class MatchdayEngine:
     def __init__(self, seed: int = 123):
@@ -124,6 +125,9 @@ class MatchdayEngine:
                     "expectedValueGrowth": 0.0,
                     "expectedRisk": 0.0
                 },
+                available_actions=available_lineup_actions,
+                alternative_actions=alternative_lineup_actions,
+                situation_id=situation.id,
                 strategy_version=mgr.strategy_version,
                 reasoning_factors={
                     "formation": lineup_dict["formation"],
@@ -133,6 +137,7 @@ class MatchdayEngine:
             )
             db.add(dec)
             db.flush()
+            KnowledgeService.record_case(db, situation, dec)
             dec_dict = {"decision": dec, "situation": situation, "mgr": mgr, "type": "LINEUP", "roster_before": len(roster_players), "budget_before": mgr.budget}
             decisions_made.append(dec_dict)
 
@@ -195,6 +200,9 @@ class MatchdayEngine:
                         "expectedValueGrowth": expected_growth,
                         "expectedRisk": expected_risk
                     },
+                    available_actions=available_market_actions,
+                    alternative_actions=alternative_market_actions,
+                    situation_id=act_situation.id,
                     strategy_version=mgr.strategy_version,
                     reasoning_factors={
                         "reason": action["reasoning"].get("reason", "strategy_logic"),
@@ -205,6 +213,7 @@ class MatchdayEngine:
                 )
                 db.add(act_dec)
                 db.flush()
+                KnowledgeService.record_case(db, act_situation, act_dec)
 
                 # Execute action or create bid
                 if action_name == "SELL":

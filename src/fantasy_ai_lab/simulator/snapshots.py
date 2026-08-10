@@ -121,6 +121,11 @@ class SnapshotService:
                     "severity": e.severity,
                     "duration": e.duration,
                     "impact": e.impact,
+                    "probability": e.probability,
+                    "uncertainty": e.uncertainty,
+                    "consequences": e.consequences,
+                    "recovery": e.recovery,
+                    "source": e.source,
                     "is_extreme": e.is_extreme
                 } for e in events
             ],
@@ -179,7 +184,7 @@ class SnapshotService:
         db.query(Lineup).filter_by(league_id=league_id).delete()
         db.query(Transaction).filter_by(league_id=league_id).delete()
         db.query(Bid).filter_by(league_id=league_id).delete()
-        db.query(Event).filter_by(league_id=league_id).delete()
+        db.query(Event).filter_by(league_id=league_id).delete(synchronize_session="fetch")
         db.query(Decision).filter_by(league_id=league_id).delete()
         db.query(Situation).filter_by(league_id=league_id).delete()
         db.query(Player).filter_by(league_id=league_id).delete()
@@ -313,6 +318,11 @@ class SnapshotService:
                 severity=e_data["severity"],
                 duration=e_data["duration"],
                 impact=e_data["impact"],
+                probability=e_data.get("probability", 0.0),
+                uncertainty=e_data.get("uncertainty", 0.0),
+                consequences=e_data.get("consequences"),
+                recovery=e_data.get("recovery"),
+                source=e_data.get("source", "random"),
                 is_extreme=e_data["is_extreme"]
             )
             db.add(evt)
@@ -496,6 +506,11 @@ class SnapshotService:
                 severity=e_data["severity"],
                 duration=e_data["duration"],
                 impact=e_data["impact"],
+                probability=e_data.get("probability", 0.0),
+                uncertainty=e_data.get("uncertainty", 0.0),
+                consequences=e_data.get("consequences"),
+                recovery=e_data.get("recovery"),
+                source=e_data.get("source", "random"),
                 is_extreme=e_data["is_extreme"]
             )
             db.add(evt)

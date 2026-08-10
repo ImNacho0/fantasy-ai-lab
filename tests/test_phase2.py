@@ -1,11 +1,11 @@
 import pytest
 import random
 from pydantic import ValidationError
-from src.fantasy_ai_lab.database.models import Manager, Player, Roster, Decision, Reward, Outcome
-from src.fantasy_ai_lab.agents.base import BaseAgent
-from src.fantasy_ai_lab.strategy.base import get_strategy_by_name, StrategyConfig
-from src.fantasy_ai_lab.simulator.engine import SimulationEngine
-from src.fantasy_ai_lab.simulator.matchday import MatchdayEngine
+from fantasy_ai_lab.database.models import Manager, Player, Roster, Decision, Reward, Outcome
+from fantasy_ai_lab.agents.base import BaseAgent
+from fantasy_ai_lab.strategy.base import get_strategy_by_name, StrategyConfig
+from fantasy_ai_lab.simulator.engine import SimulationEngine
+from fantasy_ai_lab.simulator.matchday import MatchdayEngine
 
 def test_strategy_config_validation():
     # Valid config
