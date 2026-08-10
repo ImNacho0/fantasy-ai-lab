@@ -10,7 +10,8 @@ from fantasy_ai_lab.database.connection import get_db, engine, Base
 from fantasy_ai_lab.config import settings
 from fantasy_ai_lab.database.models import (
     SimulationJob, Simulation, League, Manager, Player, Roster, Lineup,
-    Snapshot, Decision, Situation, Outcome, Reward, Event, Transaction
+    Snapshot, Decision, Situation, Outcome, Reward, Event, Transaction,
+    Evaluation, StrategyVersion
 )
 from fantasy_ai_lab.simulator.jobs import JobService
 from fantasy_ai_lab.simulator.snapshots import SnapshotService
@@ -76,6 +77,20 @@ class TournamentRequest(BaseModel):
     name: str
     strategies: List[Dict[str, str]]
     dataset_name: str = "all"
+
+class StrategyVersionRequest(BaseModel):
+    strategy_name: str
+    version: str
+    parameters: Dict[str, Any] = Field(default_factory=dict)
+    parent_version: Optional[str] = None
+
+class ValidationRequest(BaseModel):
+    evaluation_id: int
+    minimum_sample_size: int = Field(1, ge=1)
+    baseline_mean: Optional[float] = None
+
+class PromotionRequest(BaseModel):
+    evaluation_id: int
 
 @app.get("/health")
 def health_check():
@@ -403,17 +418,74 @@ def run_tournament(payload: TournamentRequest, db: Session = Depends(get_db)):
     tournament = TournamentService.run(db, payload.name, payload.strategies, payload.dataset_name)
     return {"tournament_id": tournament.id, "status": tournament.status, "rankings": tournament.rankings}
 
+@app.post("/api/v1/strategies/versions", status_code=201)
+def register_strategy_version(payload: StrategyVersionRequest, db: Session = Depends(get_db)):
+    version = EvaluationService.register_candidate(
+        db, payload.strategy_name, payload.version, payload.parameters, payload.parent_version
+    )
+    return {
+        "id": version.id,
+        "strategy_name": version.strategy_name,
+        "version": version.version,
+        "status": version.lifecycle_status,
+        "is_active": version.is_active,
+    }
+
+@app.get("/api/v1/strategies/versions")
+def list_strategy_versions(strategy_name: Optional[str] = Query(None), db: Session = Depends(get_db)):
+    query = db.query(StrategyVersion).order_by(StrategyVersion.strategy_name, StrategyVersion.version)
+    if strategy_name:
+        query = query.filter(StrategyVersion.strategy_name == strategy_name)
+    return [{
+        "id": version.id,
+        "strategy_name": version.strategy_name,
+        "version": version.version,
+        "status": version.lifecycle_status,
+        "is_active": version.is_active,
+        "parent_version": version.parent_version,
+        "promoted_at": version.promoted_at.isoformat() if version.promoted_at else None,
+    } for version in query.all()]
+
+@app.post("/api/v1/validate", status_code=200)
+def validate_strategy(payload: ValidationRequest, db: Session = Depends(get_db)):
+    evaluation = db.query(Evaluation).filter_by(id=payload.evaluation_id).first()
+    if not evaluation:
+        raise HTTPException(status_code=404, detail="Evaluation not found")
+    result = EvaluationService.validate_candidate(
+        db, evaluation, payload.minimum_sample_size, payload.baseline_mean
+    )
+    return {"evaluation_id": result.id, "status": result.status, "sample_size": result.sample_size, "metrics": result.metrics}
+
+@app.post("/api/v1/promote", status_code=200)
+def promote_strategy(payload: PromotionRequest, db: Session = Depends(get_db)):
+    try:
+        version = EvaluationService.promote_candidate(db, payload.evaluation_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {
+        "status": "promoted",
+        "strategy_name": version.strategy_name,
+        "version": version.version,
+        "is_active": version.is_active,
+    }
+
 @app.post("/api/v1/simulate")
 def execute_real_time_simulation():
     return {"status": "success", "message": "On-demand simulation endpoint ready."}
 
 @app.get("/api/v1/strategy/current")
-def get_current_strategy():
-    return {"strategy": "BalancedAgent", "version": "v1.0", "parameters": {"riskTolerance": 0.5}}
+def get_current_strategy(strategy_name: str = Query("Balanced"), db: Session = Depends(get_db)):
+    version = db.query(StrategyVersion).filter_by(strategy_name=strategy_name, is_active=True).order_by(StrategyVersion.id.desc()).first()
+    if not version:
+        return {"strategy": strategy_name, "version": None, "parameters": {}, "status": "unconfigured"}
+    return {"strategy": version.strategy_name, "version": version.version, "parameters": version.parameters or {}, "status": version.lifecycle_status}
 
 @app.get("/api/v1/strategy/history")
-def get_strategy_history():
-    return [{"version": "v1.0", "deployed_at": datetime.datetime.now(datetime.UTC).isoformat()}]
+def get_strategy_history(strategy_name: Optional[str] = Query(None), db: Session = Depends(get_db)):
+    query = db.query(StrategyVersion).order_by(StrategyVersion.created_at.desc())
+    if strategy_name:
+        query = query.filter(StrategyVersion.strategy_name == strategy_name)
+    return [{"strategy": v.strategy_name, "version": v.version, "status": v.lifecycle_status, "is_active": v.is_active, "created_at": v.created_at.isoformat() if v.created_at else None} for v in query.all()]
 
 @app.get("/api/v1/knowledge/similar")
 def search_similar_situations(
