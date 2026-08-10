@@ -269,7 +269,7 @@ class MatchdayEngine:
 
         # 9. Mark matchday as completed
         matchday_record.status = "completed"
-        matchday_record.simulated_at = datetime.datetime.utcnow()
+        matchday_record.simulated_at = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
 
         # Advance league matchday counter
         league.matchday = matchday_num

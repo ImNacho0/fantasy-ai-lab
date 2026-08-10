@@ -43,7 +43,7 @@ class DecisionRequest(BaseModel):
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy", "timestamp": datetime.datetime.utcnow().isoformat()}
+    return {"status": "healthy", "timestamp": datetime.datetime.now(datetime.UTC).isoformat()}
 
 # --- SIMULATIONS ENDPOINTS ---
 
@@ -300,7 +300,7 @@ def get_current_strategy():
 
 @app.get("/api/v1/strategy/history")
 def get_strategy_history():
-    return [{"version": "v1.0", "deployed_at": datetime.datetime.utcnow().isoformat()}]
+    return [{"version": "v1.0", "deployed_at": datetime.datetime.now(datetime.UTC).isoformat()}]
 
 @app.get("/api/v1/knowledge/similar")
 def search_similar_situations(price: float = Query(1000000.0), db: Session = Depends(get_db)):
