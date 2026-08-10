@@ -8,6 +8,7 @@ from sqlalchemy import pool
 from alembic import context
 
 # Add repository root to python path so we can import src.fantasy_ai_lab
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from fantasy_ai_lab.config import settings
@@ -16,7 +17,8 @@ from fantasy_ai_lab.database.connection import Base
 from fantasy_ai_lab.database.models import (
     SimulationJob, Simulation, League, Manager, Team, Player, Roster, Lineup,
     Matchday, Market, Transaction, Bid, Event, Snapshot, Decision, Situation,
-    Outcome, Strategy, StrategyVersion, Reward
+    Outcome, Strategy, StrategyVersion, Reward, Scenario, KnowledgeCase,
+    Counterfactual, Evaluation, Tournament
 )
 
 # this is the Alembic Config object, which provides
