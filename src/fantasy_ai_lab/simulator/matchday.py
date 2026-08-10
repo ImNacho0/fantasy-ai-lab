@@ -61,7 +61,6 @@ class MatchdayEngine:
         for idx, mgr in enumerate(managers):
             # Gather roster
             roster_items = db.query(Roster).filter_by(league_id=league.id, manager_id=mgr.id).all()
-            # Order roster players by name to be stable
             roster_players = [db.query(Player).filter_by(id=r.player_id).first() for r in roster_items]
             roster_players = [p for p in roster_players if p is not None]
             roster_players.sort(key=lambda p: p.name)
@@ -86,6 +85,19 @@ class MatchdayEngine:
             db.add(lineup_record)
             db.flush()
 
+            # Compile available lineup options/actions
+            available_lineup_actions = ["LINEUP 4-4-2"]
+            alternative_lineup_actions = [] # No other formations in Fase 1/2
+
+            # Calculate lineup expected outcome
+            expected_lineup_points = 0.0
+            lineup_player_ids = [lineup_record.goalkeeper_id] + (lineup_record.defenders_ids or []) + (lineup_record.midfielders_ids or []) + (lineup_record.forwards_ids or [])
+            lineup_player_ids = [p_id for p_id in lineup_player_ids if p_id is not None]
+            for p_id in lineup_player_ids:
+                p_model = db.query(Player).filter_by(id=p_id).first()
+                if p_model:
+                    expected_lineup_points += p_model.xp * p_model.form
+
             # Record Lineup Decision
             situation = Situation(
                 league_id=league.id,
@@ -107,8 +119,17 @@ class MatchdayEngine:
                 matchday_number=matchday_num,
                 action_type="LINEUP",
                 confidence=1.0,
+                expected_outcome={
+                    "expectedPoints": round(expected_lineup_points, 1),
+                    "expectedValueGrowth": 0.0,
+                    "expectedRisk": 0.0
+                },
                 strategy_version=mgr.strategy_version,
-                reasoning_factors={"formation": lineup_dict["formation"]}
+                reasoning_factors={
+                    "formation": lineup_dict["formation"],
+                    "availableActions": available_lineup_actions,
+                    "alternativeActions": alternative_lineup_actions
+                }
             )
             db.add(dec)
             db.flush()
@@ -117,17 +138,44 @@ class MatchdayEngine:
 
             # B. Market Decisions (Buy/Sell)
             market_actions = agent.make_market_decisions(market_listings, roster_players)
+
+            # Construct comprehensive list of available market actions for context
+            available_market_actions = ["HOLD"]
+            for mp in market_listings:
+                available_market_actions.append(f"BUY {mp.name} (price: {mp.price:,.0f})")
+            for rp in roster_players:
+                available_market_actions.append(f"SELL {rp.name} (market_value: {rp.market_value:,.0f})")
+
+            # Execute market decisions
             for action in market_actions:
+                action_name = action["action"]
+                target_player_id = action["player_id"]
+                target_player = db.query(Player).filter_by(id=target_player_id).first()
+                target_player_name = target_player.name if target_player else "unknown"
+
+                # Define alternative actions (all available except the chosen one)
+                chosen_act_str = f"{action_name} {target_player_name}"
+                alternative_market_actions = [a for a in available_market_actions if not a.startswith(chosen_act_str)]
+
+                # Calculate expected outcomes based on actual player data
+                expected_pts = 0.0
+                expected_growth = 0.0
+                expected_risk = 0.0
+                if target_player:
+                    expected_pts = target_player.xp * target_player.form
+                    expected_growth = 0.05 if action_name == "BUY" else -0.05
+                    expected_risk = 0.1 if target_player.status == "healthy" else 0.5
+
                 # Store Situation
                 act_situation = Situation(
                     league_id=league.id,
                     manager_id=mgr.id,
-                    player_id=action["player_id"],
+                    player_id=target_player_id,
                     matchday_number=matchday_num,
                     state_features={
                         "budget": mgr.budget,
                         "roster_count": len(roster_players),
-                        "action_context": action["action"]
+                        "action_context": action_name
                     }
                 )
                 db.add(act_situation)
@@ -137,34 +185,44 @@ class MatchdayEngine:
                 act_dec = Decision(
                     league_id=league.id,
                     manager_id=mgr.id,
-                    player_id=action["player_id"],
+                    player_id=target_player_id,
                     matchday_number=matchday_num,
-                    action_type=action["action"],
+                    action_type=action_name,
                     amount=action["amount"],
-                    confidence=action["confidence"],
+                    confidence=action.get("confidence", 0.8),
+                    expected_outcome={
+                        "expectedPoints": round(expected_pts, 1),
+                        "expectedValueGrowth": expected_growth,
+                        "expectedRisk": expected_risk
+                    },
                     strategy_version=mgr.strategy_version,
-                    reasoning_factors=action["reasoning"]
+                    reasoning_factors={
+                        "reason": action["reasoning"].get("reason", "strategy_logic"),
+                        "multiplier": action["reasoning"].get("multiplier", 1.0),
+                        "availableActions": available_market_actions,
+                        "alternativeActions": alternative_market_actions
+                    }
                 )
                 db.add(act_dec)
                 db.flush()
 
                 # Execute action or create bid
-                if action["action"] == "SELL":
+                if action_name == "SELL":
                     # Instant sale
                     self.market_engine.process_sales(
                         db=db,
                         league_id=league.id,
                         manager_id=mgr.id,
-                        player_id=action["player_id"],
+                        player_id=target_player_id,
                         sale_price=action["amount"],
                         matchday_num=matchday_num
                     )
-                elif action["action"] == "BUY":
+                elif action_name == "BUY":
                     # Place Bid
                     bid = Bid(
                         league_id=league.id,
                         manager_id=mgr.id,
-                        player_id=action["player_id"],
+                        player_id=target_player_id,
                         amount=action["amount"],
                         matchday_number=matchday_num,
                         status="pending"
@@ -172,7 +230,7 @@ class MatchdayEngine:
                     db.add(bid)
                     db.flush()
 
-                dec_dict = {"decision": act_dec, "situation": act_situation, "mgr": mgr, "type": action["action"], "roster_before": len(roster_players), "budget_before": mgr.budget}
+                dec_dict = {"decision": act_dec, "situation": act_situation, "mgr": mgr, "type": action_name, "roster_before": len(roster_players), "budget_before": mgr.budget}
                 decisions_made.append(dec_dict)
 
         # 4. Resolve all market Bids
@@ -256,16 +314,51 @@ class MatchdayEngine:
             db.add(out)
             db.flush()
 
-            # Reward metric
-            reward = Reward(
+            # Reward metric: Generate multiple reward profiles to demonstrate Outcome/Reward separation
+            # 1. points-focused
+            points_focused_reward = Reward(
                 decision_id=dec.id,
                 points_score=pts_gained,
-                wealth_score=wealth_gained / 1000000.0, # scaled wealth score
+                wealth_score=0.0,
+                risk_score=0.0,
+                total_reward=round(pts_gained, 3),
+                profile_name="points-focused"
+            )
+            db.add(points_focused_reward)
+
+            # 2. wealth-focused
+            wealth_focused_reward = Reward(
+                decision_id=dec.id,
+                points_score=0.0,
+                wealth_score=wealth_gained / 1000000.0,
+                risk_score=0.0,
+                total_reward=round(wealth_gained / 1000000.0, 3),
+                profile_name="wealth-focused"
+            )
+            db.add(wealth_focused_reward)
+
+            # 3. balanced
+            balanced_reward = Reward(
+                decision_id=dec.id,
+                points_score=pts_gained,
+                wealth_score=wealth_gained / 1000000.0,
                 risk_score=0.1 if dec_type == "BUY" else 0.0,
-                total_reward=round(pts_gained + (wealth_gained / 1000000.0), 3),
+                total_reward=round((pts_gained * 0.5) + ((wealth_gained / 1000000.0) * 0.5), 3),
                 profile_name="balanced"
             )
-            db.add(reward)
+            db.add(balanced_reward)
+
+            # 4. risk-adjusted
+            risk_penalty = 1.0 if dec_type == "BUY" else 0.0
+            risk_adjusted_reward = Reward(
+                decision_id=dec.id,
+                points_score=pts_gained,
+                wealth_score=wealth_gained / 1000000.0,
+                risk_score=risk_penalty,
+                total_reward=round(pts_gained + (wealth_gained / 1000000.0) - risk_penalty, 3),
+                profile_name="risk-adjusted"
+            )
+            db.add(risk_adjusted_reward)
 
         # 9. Mark matchday as completed
         matchday_record.status = "completed"
