@@ -1,5 +1,5 @@
-from src.fantasy_ai_lab.simulator.jobs import JobService
-from src.fantasy_ai_lab.database.models import SimulationJob, League, Roster
+from fantasy_ai_lab.simulator.jobs import JobService
+from fantasy_ai_lab.database.models import SimulationJob, League, Roster
 
 def test_job_execution_and_checkpoints(db_session):
     # Create a job for 2 leagues, 2 matchdays

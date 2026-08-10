@@ -1,6 +1,6 @@
 import random
 from typing import Dict, Any
-from src.fantasy_ai_lab.database.models import Player
+from fantasy_ai_lab.database.models import Player
 
 class ScoringEngine:
     def __init__(self, seed: int = 123):

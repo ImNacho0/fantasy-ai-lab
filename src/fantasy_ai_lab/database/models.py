@@ -1,7 +1,7 @@
 import datetime
 from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Text, JSON, Table
 from sqlalchemy.orm import relationship
-from src.fantasy_ai_lab.database.connection import Base
+from fantasy_ai_lab.database.connection import Base
 
 class SimulationJob(Base):
     __tablename__ = 'simulation_jobs'

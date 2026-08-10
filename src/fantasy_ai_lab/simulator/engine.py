@@ -1,11 +1,11 @@
 import random
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
-from src.fantasy_ai_lab.database.models import (
+from fantasy_ai_lab.database.models import (
     League, Manager, Team, Player, Roster, Simulation, Matchday, SimulationJob
 )
-from src.fantasy_ai_lab.data.provider import MockDataProvider
-from src.fantasy_ai_lab.simulator.matchday import MatchdayEngine
+from fantasy_ai_lab.data.provider import MockDataProvider
+from fantasy_ai_lab.simulator.matchday import MatchdayEngine
 
 class SimulationEngine:
     def __init__(self, seed: int = 123):

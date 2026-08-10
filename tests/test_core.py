@@ -1,5 +1,5 @@
-from src.fantasy_ai_lab.simulator.engine import SimulationEngine
-from src.fantasy_ai_lab.database.models import League, Manager, Team, Player, Roster
+from fantasy_ai_lab.simulator.engine import SimulationEngine
+from fantasy_ai_lab.database.models import League, Manager, Team, Player, Roster
 
 def test_league_creation(db_session):
     engine = SimulationEngine(seed=42)

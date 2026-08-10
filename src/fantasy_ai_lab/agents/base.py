@@ -1,6 +1,6 @@
 import random
 from typing import List, Dict, Any, Optional
-from src.fantasy_ai_lab.database.models import Manager, Player, Roster
+from fantasy_ai_lab.database.models import Manager, Player, Roster
 
 class BaseAgent:
     def __init__(self, manager: Manager, seed: int = 123):
