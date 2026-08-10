@@ -8,6 +8,10 @@ La API de FastAPI actúa como la interfaz de consulta y simulación interactiva.
 - **`GET /health`**: Devuelve el estado de disponibilidad y hora UTC actual.
 
 ### 2. Gestión de Trabajos de Simulación (Simulation Jobs)
+- **`POST /api/v1/simulations/{id}/run-batch`**: Ejecuta un lote acotado (`max_leagues`) en segundo plano; cada liga completada persiste su checkpoint.
+- **`POST /api/v1/simulations/{id}/cancel`**: Solicita cancelación segura y conserva la próxima unidad reanudable.
+- **`GET /api/v1/dashboard/overview`**: Devuelve métricas y trabajos recientes para polling del dashboard.
+
 - **`POST /api/v1/simulations`**: Crea un nuevo trabajo de simulación persistente.
 - **`GET /api/v1/simulations`**: Lista todos los trabajos de simulación creados.
 - **`GET /api/v1/simulations/{id}`**: Obtiene el detalle, progreso (checkpoint) y ligas de un trabajo.
@@ -24,11 +28,7 @@ La API de FastAPI actúa como la interfaz de consulta y simulación interactiva.
 - **`POST /api/v1/snapshots/{id}/restore`**: Sobrescribe el estado activo de la liga con el guardado en el snapshot.
 - **`POST /api/v1/snapshots/{id}/fork`**: Crea una nueva bifurcación (`League` independiente) a partir de un snapshot con un nuevo nombre.
 
-### 5. Integración con `fantasy-manager` (solo lectura)
-- **`GET /api/v1/integration/fantasy-manager/status`**: Expone capacidades y confirma que el laboratorio no ejecuta acciones reales.
-- **`POST /api/v1/integration/fantasy-manager/decision`**: Recibe un snapshot desacoplado (`leagueState`, `market`, `team`, `lineup`, `context`), normaliza features, consulta memoria y devuelve una recomendación con evidencia. La ejecución pertenece a `fantasy-manager`.
-
-### 5.1 Recomendación de Estrategia
+### 5. Integración con `fantasy-manager` (Recomendación de Estrategia)
 - **`POST /api/v1/decision`**: Recibe el estado real o simulado de una liga, busca situaciones similares en la base de datos de simulación y devuelve una recomendación explicada con nivel de confianza.
 - **`GET /api/v1/knowledge/similar`**: Busca casos históricos cercanos a un precio y agrega evidencia por acción.
 - **`POST /api/v1/knowledge/similar`**: Busca situaciones usando un objeto completo de features; admite filtros por acción, estrategia, versión, dataset y distancia máxima.
@@ -40,3 +40,6 @@ La API de FastAPI actúa como la interfaz de consulta y simulación interactiva.
 - **`POST /api/v1/decisions/{id}/counterfactuals/from-memory`**: deriva alternativas únicamente de outcomes históricos similares.
 - **`POST /api/v1/evaluate`**: calcula métricas de una estrategia y versión sobre un dataset.
 - **`POST /api/v1/tournaments`**: compara versiones y devuelve ranking persistido.
+
+### 7. Continuous training
+- **`POST /api/v1/training/cycle`**: Ejecuta un único ciclo acotado de simulación/evaluación. No inicia procesos infinitos y puede volver a invocarse desde GitHub Actions.

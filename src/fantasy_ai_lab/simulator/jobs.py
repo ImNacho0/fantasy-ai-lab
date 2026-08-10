@@ -36,8 +36,8 @@ class JobService:
         if not job:
             raise ValueError(f"SimulationJob with ID {job_id} not found.")
 
-        if job.status in ["completed", "failed"]:
-            return job # Already finished, don't execute to ensure idempotency!
+        if job.status in ["completed", "failed", "cancelled"]:
+            return job # Already finalized, don't execute to ensure idempotency!
 
         job.status = "running"
         db.commit()
@@ -66,6 +66,9 @@ class JobService:
             extreme_scenarios = {int(k): v for k, v in extreme_scenarios_raw.items()}
 
             for i in range(start_league_idx, job.leagues_total):
+                db.refresh(job)
+                if job.status == "cancelled":
+                    break
                 job.current_league_idx = i
                 db.commit()
 
@@ -113,8 +116,9 @@ class JobService:
                 }
                 db.commit()
 
-            # Set status to completed
-            job.status = "completed"
+            # Set status to completed only if the bounded run was not cancelled.
+            if job.status != "cancelled":
+                job.status = "completed"
             db.commit()
 
         except Exception as e:
@@ -124,4 +128,19 @@ class JobService:
             db.commit()
             raise e
 
+        return job
+
+    @staticmethod
+    def cancel_job(db: Session, job_id: int) -> SimulationJob:
+        job = db.query(SimulationJob).filter_by(id=job_id).first()
+        if not job:
+            raise ValueError(f"SimulationJob with ID {job_id} not found.")
+        if job.status not in ("completed", "failed", "cancelled"):
+            job.status = "cancelled"
+            job.checkpoint = {
+                **(job.checkpoint or {}),
+                "cancelled_at_units": job.leagues_completed,
+                "next_league_index": job.leagues_completed,
+            }
+            db.commit()
         return job
