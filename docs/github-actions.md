@@ -12,7 +12,7 @@ Permite lanzar simulaciones configurando parámetros interactivos desde la pesta
 - `matchdays`: Jornadas a simular (por defecto 5).
 - `seed`: Semilla aleatoria (por defecto 123).
 - `extreme_matchday`: Jornada en la que inyectar un escenario extremo (opcional).
-- `extreme_scenario`: Nombre del escenario (`STAR_PLAYER_INJURED`, `MARKET_CRASH`).
+- `extreme_scenario`: Nombre del escenario (`STAR_PLAYER_INJURED`, `MARKET_CRASH`, `MARKET_BOOM`, `TEAM_FORM_COLLAPSE`, `KEY_PLAYER_LOSES_STARTING_ROLE` o `MANAGER_OVERBID`).
 
 ### 2. Ejecución Programada (schedule)
 Lanza una simulación de control de forma diaria a medianoche UTC de manera automática.
@@ -20,5 +20,6 @@ Lanza una simulación de control de forma diaria a medianoche UTC de manera auto
 ## Checkpoints y Reanudación
 Dado que los corredores de GitHub Actions tienen un límite máximo de tiempo por ejecución (6 horas) y pueden interrumpirse de forma inesperada, el motor está programado para ser **idempotente y tolerante a fallos**:
 - Al final de la simulación de cada liga, el runner guarda un checkpoint (`leagues_completed`).
+- La simulación registra los eventos de la jornada y sus metadatos de duración, impacto, incertidumbre y recuperación; el workflow puede inyectar escenarios extremos reproducibles.
 - Si el job se cancela o interrumpe, el estado del SimulationJob en la base de datos queda guardado.
 - En la siguiente ejecución, el sistema detecta el trabajo incompleto y continúa exactamente desde la última liga no procesada, evitando la duplicación de datos o el desperdicio de tiempo de cómputo.

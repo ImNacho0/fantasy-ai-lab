@@ -7,18 +7,28 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from fantasy_ai_lab.database.connection import get_db, engine, Base
+from fantasy_ai_lab.config import settings
 from fantasy_ai_lab.database.models import (
     SimulationJob, Simulation, League, Manager, Player, Roster, Lineup,
     Snapshot, Decision, Situation, Outcome, Reward, Event, Transaction
 )
 from fantasy_ai_lab.simulator.jobs import JobService
 from fantasy_ai_lab.simulator.snapshots import SnapshotService
+from fantasy_ai_lab.simulator.counterfactuals import CounterfactualService
+from fantasy_ai_lab.simulator.events import EventEngine
+from fantasy_ai_lab.knowledge.memory import KnowledgeService
+from fantasy_ai_lab.training.evaluation import EvaluationService
+from fantasy_ai_lab.training.tournaments import TournamentService
 
 app = FastAPI(
     title="Fantasy AI Lab API",
     description="Autonomous simulation, learning, and strategy system for Fantasy Football",
     version="1.0.0"
 )
+
+# Local/test fallback only. Production schema changes still go through Alembic.
+if settings.ENV == "development":
+    Base.metadata.create_all(bind=engine)
 
 # Pydantic schemas for request validation
 class JobCreate(BaseModel):
@@ -35,11 +45,25 @@ class ForkRequest(BaseModel):
     new_league_name: str = Field(..., description="Name for the newly forked league")
 
 class DecisionRequest(BaseModel):
-    leagueState: Dict[str, Any]
-    market: Dict[str, Any]
-    team: Dict[str, Any]
-    lineup: Dict[str, Any]
-    context: Dict[str, Any]
+    leagueState: Dict[str, Any] = Field(default_factory=dict)
+    market: Dict[str, Any] = Field(default_factory=dict)
+    team: Dict[str, Any] = Field(default_factory=dict)
+    lineup: Dict[str, Any] = Field(default_factory=dict)
+    context: Dict[str, Any] = Field(default_factory=dict)
+
+class CounterfactualRequest(BaseModel):
+    alternatives: List[Dict[str, Any]] = Field(default_factory=list)
+
+class EvaluationRequest(BaseModel):
+    strategy_name: str
+    strategy_version: str = "v1.0"
+    dataset_name: str = "all"
+    league_id: Optional[int] = None
+
+class TournamentRequest(BaseModel):
+    name: str
+    strategies: List[Dict[str, str]]
+    dataset_name: str = "all"
 
 @app.get("/health")
 def health_check():
@@ -166,6 +190,55 @@ def get_league_details(id: int, db: Session = Depends(get_db)):
         } for m in managers]
     }
 
+# --- EVENT OPERATIONS ---
+
+@app.get("/api/v1/events/catalog")
+def event_catalog():
+    """Return the versioned event definitions used by the simulator."""
+    return {"events": EventEngine.catalog()}
+
+@app.get("/api/v1/leagues/{id}/events")
+def list_league_events(
+    id: int,
+    matchday: Optional[int] = Query(None, ge=1),
+    event_type: Optional[str] = Query(None),
+    extreme_only: bool = Query(False),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    league = db.query(League).filter_by(id=id).first()
+    if not league:
+        raise HTTPException(status_code=404, detail="League not found")
+    query = db.query(Event).filter(Event.league_id == id)
+    if matchday is not None:
+        query = query.filter(Event.matchday_number == matchday)
+    if event_type:
+        query = query.filter(Event.event_type == event_type)
+    if extreme_only:
+        query = query.filter(Event.is_extreme.is_(True))
+    events = query.order_by(Event.matchday_number, Event.id).limit(limit).all()
+    return {
+        "league_id": id,
+        "sample_size": len(events),
+        "events": [{
+            "id": event.id,
+            "matchday": event.matchday_number,
+            "type": event.event_type,
+            "player_id": event.target_player_id,
+            "manager_id": event.target_manager_id,
+            "description": event.description,
+            "severity": event.severity,
+            "duration": event.duration,
+            "impact": event.impact,
+            "probability": event.probability,
+            "uncertainty": event.uncertainty,
+            "consequences": event.consequences,
+            "recovery": event.recovery,
+            "source": event.source,
+            "is_extreme": event.is_extreme,
+        } for event in events],
+    }
+
 # --- SNAPSHOT OPERATIONS ---
 
 @app.get("/api/v1/leagues/{id}/snapshots")
@@ -243,6 +316,15 @@ def get_recommendation(payload: DecisionRequest, db: Session = Depends(get_db)):
     player_id = payload.context.get("playerId", "unknown")
     player_name = payload.context.get("playerName", "unnamed")
     player_price = payload.context.get("playerPrice", 1000000.0)
+    historical_memory = KnowledgeService.recommend(
+        db,
+        {
+            "playerPrice": float(player_price),
+            "budget": float(payload.team.get("budget", payload.context.get("budget", 0.0)) or 0.0),
+            "matchday": float(payload.leagueState.get("matchday", 0.0) or 0.0),
+        },
+        limit=10,
+    )
 
     # 2. Check the DB for similar decisions in past simulations to base recommendation
     similar_decisions = db.query(Decision).filter(
@@ -283,12 +365,47 @@ def get_recommendation(payload: DecisionRequest, db: Session = Depends(get_db)):
         "confidence": confidence,
         "explanation": explanation,
         "similarCases": outcomes_summary,
+        "sampleSize": historical_memory["sample_size"],
+        "historicalMemory": historical_memory,
         "strategyVersion": "v1.0"
     }
 
-@app.post("/api/v1/evaluate")
-def evaluate_strategy():
-    return {"status": "success", "message": "Strategy evaluation endpoint ready."}
+@app.post("/api/v1/decisions/{id}/counterfactuals")
+def create_counterfactuals(id: int, payload: CounterfactualRequest, db: Session = Depends(get_db)):
+    decision = db.query(Decision).filter_by(id=id).first()
+    if not decision:
+        raise HTTPException(status_code=404, detail="Decision not found")
+    results = CounterfactualService.evaluate(db, decision, payload.alternatives)
+    db.commit()
+    return CounterfactualService.compare(db, id)
+
+@app.get("/api/v1/decisions/{id}/counterfactuals")
+def list_counterfactuals(id: int, db: Session = Depends(get_db)):
+    try:
+        return CounterfactualService.compare(db, id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+@app.post("/api/v1/evaluate", status_code=201)
+def evaluate_strategy(payload: EvaluationRequest, db: Session = Depends(get_db)):
+    evaluation = EvaluationService.evaluate_strategy(
+        db,
+        strategy_name=payload.strategy_name,
+        strategy_version=payload.strategy_version,
+        dataset_name=payload.dataset_name,
+        league_id=payload.league_id,
+    )
+    return {
+        "evaluation_id": evaluation.id,
+        "status": evaluation.status,
+        "sample_size": evaluation.sample_size,
+        "metrics": evaluation.metrics,
+    }
+
+@app.post("/api/v1/tournaments", status_code=201)
+def run_tournament(payload: TournamentRequest, db: Session = Depends(get_db)):
+    tournament = TournamentService.run(db, payload.name, payload.strategies, payload.dataset_name)
+    return {"tournament_id": tournament.id, "status": tournament.status, "rankings": tournament.rankings}
 
 @app.post("/api/v1/simulate")
 def execute_real_time_simulation():
@@ -303,14 +420,14 @@ def get_strategy_history():
     return [{"version": "v1.0", "deployed_at": datetime.datetime.now(datetime.UTC).isoformat()}]
 
 @app.get("/api/v1/knowledge/similar")
-def search_similar_situations(price: float = Query(1000000.0), db: Session = Depends(get_db)):
+def search_similar_situations(price: float = Query(1000000.0), limit: int = Query(10, ge=1, le=100), db: Session = Depends(get_db)):
     """
     Search database for similar cases of player acquisition and display outcomes.
     """
     cases = db.query(Decision).filter(
         Decision.amount >= price * 0.8,
         Decision.amount <= price * 1.2
-    ).limit(10).all()
+    ).limit(limit).all()
 
     results = []
     for c in cases:
@@ -370,7 +487,7 @@ def dashboard_view(db: Session = Depends(get_db)):
                 <h1 class="display-5">Laboratorio de Aprendizaje Fantasy</h1>
                 <p class="lead">Simula miles de ligas, refina estrategias de IA, busca situaciones históricas y devuelve recomendaciones.</p>
                 <div class="mt-3">
-                    <span class="badge bg-success py-2 px-3">Modo: Fase 1 Operativo</span>
+                    <span class="badge bg-success py-2 px-3">Modo: Fases 1–3 operativas</span>
                     <span class="badge bg-light text-dark py-2 px-3 ms-2">Base de Datos: SQL/ORM Configurado</span>
                 </div>
             </div>
