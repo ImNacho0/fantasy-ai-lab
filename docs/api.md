@@ -26,11 +26,13 @@ La API de FastAPI actúa como la interfaz de consulta y simulación interactiva.
 
 ### 5. Integración con `fantasy-manager` (Recomendación de Estrategia)
 - **`POST /api/v1/decision`**: Recibe el estado real o simulado de una liga, busca situaciones similares en la base de datos de simulación y devuelve una recomendación explicada con nivel de confianza.
-- **`GET /api/v1/knowledge/similar`**: Busca decisiones históricas basadas en un rango de precios y muestra su impacto en puntos y riqueza.
+- **`GET /api/v1/knowledge/similar`**: Busca casos históricos cercanos a un precio y agrega evidencia por acción.
+- **`POST /api/v1/knowledge/similar`**: Busca situaciones usando un objeto completo de features; admite filtros por acción, estrategia, versión, dataset y distancia máxima.
 - **`GET /api/v1/strategy/current`**: Devuelve los parámetros de la estrategia activa.
 
 ### 6. Memoria, contrafactuales y evaluación
 - **`GET /api/v1/knowledge/similar`**: Devuelve casos históricos con tamaño de muestra y resultados.
-- **`POST /api/v1/decisions/{id}/counterfactuals`** y **`GET /api/v1/decisions/{id}/counterfactuals`**: registra y consulta alternativas estimadas sin ejecutar acciones reales.
+- **`POST /api/v1/decisions/{id}/counterfactuals`** y **`GET /api/v1/decisions/{id}/counterfactuals`**: registra y consulta alternativas estimadas sin ejecutar acciones reales; conserva baseline, fuente y tamaño de muestra.
+- **`POST /api/v1/decisions/{id}/counterfactuals/from-memory`**: deriva alternativas únicamente de outcomes históricos similares.
 - **`POST /api/v1/evaluate`**: calcula métricas de una estrategia y versión sobre un dataset.
 - **`POST /api/v1/tournaments`**: compara versiones y devuelve ranking persistido.

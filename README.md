@@ -37,7 +37,7 @@ Este proyecto está estructurado desde el primer día para funcionar con **infra
 ## 🧠 Fases posteriores implementadas como primitivas funcionales
 
 - **Fase 3**: eventos extremos adicionales (`MARKET_BOOM`, `TEAM_FORM_COLLAPSE`, `KEY_PLAYER_LOSES_STARTING_ROLE`) con duración, impacto y recuperación.
-- **Fase 4**: `KnowledgeService` con memoria persistente y similitud numérica reproducible, más `CounterfactualService` para comparar alternativas sin ejecutar acciones reales.
+- **Fase 4**: memoria persistente idempotente con similitud mixta numérica/categórica, agregación por acción con muestra y outcomes observados, más contrafactuales basados en resultados reales o memoria histórica sin ejecutar acciones.
 - **Fase 5**: evaluación por dataset/versión y torneos con ranking y tamaño de muestra; ningún candidato se promociona automáticamente.
 - **Fase 6**: endpoints de contrafactuales, evaluación y torneos en FastAPI.
 - **Fase 7**: worker acotado por lotes con checkpoints persistentes para reanudación en GitHub Actions.

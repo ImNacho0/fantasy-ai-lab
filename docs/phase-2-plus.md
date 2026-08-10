@@ -18,9 +18,16 @@ El catálogo declarativo expone para cada tipo la probabilidad, rango de duraci�
 
 La API expone `GET /api/v1/events/catalog` y `GET /api/v1/leagues/{id}/events`, con filtros por jornada, tipo y eventos extremos. Los metadatos completos se conservan al restaurar o bifurcar snapshots.
 
-## Fase 4: memoria y contrafactuales
+## Fase 4: memoria, similitud y contrafactuales
 
-`KnowledgeService` persiste casos de situación–decisión y calcula similitud numérica determinista, con tamaño de muestra y métricas agregadas por acción. `CounterfactualService` guarda alternativas basadas en expectativas explícitas; no inventa datos ni ejecuta operaciones reales.
+`KnowledgeService` persiste casos de situación–decisión de forma idempotente. Convierte características numéricas y categóricas a vectores deterministas, normaliza cada dimensión durante la búsqueda para que el presupuesto no domine la distancia y permite filtrar por dataset, estrategia, versión y distancia máxima. Las recomendaciones agregan todos los casos candidatos por acción y devuelven tamaño de muestra, número de outcomes observados, recompensa media, dispersión, distancia más cercana y confianza media registrada; no presentan una estadística sin su evidencia.
+
+`CounterfactualService` usa el `Outcome` observado como baseline cuando existe, mantiene explícitos los casos que solo tienen expectativas y puede estimar alternativas exclusivamente desde casos históricos similares. Los resultados son idempotentes por decisión/acción/jugador y guardan `source`, `sample_size`, `confidence` y evidencia. No se ejecutan operaciones reales.
+
+Endpoints adicionales:
+
+- `POST /api/v1/knowledge/similar`: busca con un payload completo de features y filtros.
+- `POST /api/v1/decisions/{id}/counterfactuals/from-memory`: compara alternativas derivadas de memoria histórica.
 
 ## Fase 5: evaluación y torneos
 
@@ -48,4 +55,4 @@ PYTHONPATH=.:src DATABASE_URL=sqlite:///fantasy_ai.db alembic upgrade head
 PYTHONPATH=.:src python -m fantasy_ai_lab.simulate --leagues 2 --matchdays 2 --seed 123
 ```
 
-El CI usa runners estándar, SQLite por defecto y `pip install -e .`; también valida la migración de la revisión de eventos. Neon/PostgreSQL se reserva para persistencia compartida y pruebas de integración con sus credenciales configuradas en GitHub; nunca se almacenan secretos en el repositorio.
+El CI usa runners estándar, SQLite por defecto y `pip install -e .`; también valida las migraciones de eventos y conocimiento. Neon/PostgreSQL se reserva para persistencia compartida y pruebas de integración con sus credenciales configuradas en GitHub; nunca se almacenan secretos en el repositorio.
