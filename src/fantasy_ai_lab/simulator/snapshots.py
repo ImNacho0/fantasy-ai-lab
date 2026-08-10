@@ -2,7 +2,7 @@ import json
 import datetime
 from typing import Dict, Any, List, Optional
 from sqlalchemy.orm import Session
-from fantasy_ai_lab.database.models import (
+from src.fantasy_ai_lab.database.models import (
     League, Manager, Team, Player, Roster, Lineup, Transaction, Bid, Event,
     Decision, Situation, Snapshot
 )

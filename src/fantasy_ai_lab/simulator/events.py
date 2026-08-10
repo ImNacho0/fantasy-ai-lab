@@ -1,7 +1,7 @@
 import random
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
-from fantasy_ai_lab.database.models import Event, Player, Manager
+from src.fantasy_ai_lab.database.models import Event, Player, Manager
 
 class EventEngine:
     def __init__(self, seed: int = 123):

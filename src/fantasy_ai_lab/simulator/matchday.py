@@ -2,14 +2,14 @@ import datetime
 import json
 from typing import List, Dict, Any
 from sqlalchemy.orm import Session
-from fantasy_ai_lab.database.models import (
+from src.fantasy_ai_lab.database.models import (
     League, Manager, Player, Roster, Lineup, Matchday, Market,
     Decision, Situation, Outcome, Reward, Event, Bid, Transaction
 )
-from fantasy_ai_lab.agents.base import BaseAgent
-from fantasy_ai_lab.simulator.scoring import ScoringEngine
-from fantasy_ai_lab.simulator.events import EventEngine
-from fantasy_ai_lab.simulator.market import MarketEngine
+from src.fantasy_ai_lab.agents.base import BaseAgent
+from src.fantasy_ai_lab.simulator.scoring import ScoringEngine
+from src.fantasy_ai_lab.simulator.events import EventEngine
+from src.fantasy_ai_lab.simulator.market import MarketEngine
 
 class MatchdayEngine:
     def __init__(self, seed: int = 123):
@@ -269,7 +269,7 @@ class MatchdayEngine:
 
         # 9. Mark matchday as completed
         matchday_record.status = "completed"
-        matchday_record.simulated_at = datetime.datetime.utcnow()
+        matchday_record.simulated_at = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
 
         # Advance league matchday counter
         league.matchday = matchday_num

@@ -1,7 +1,7 @@
 import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
-from fantasy_ai_lab.config import settings
+from src.fantasy_ai_lab.config import settings
 
 DATABASE_URL = settings.DATABASE_URL
 

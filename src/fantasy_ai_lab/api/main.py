@@ -6,13 +6,13 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from fantasy_ai_lab.database.connection import get_db, engine, Base
-from fantasy_ai_lab.database.models import (
+from src.fantasy_ai_lab.database.connection import get_db, engine, Base
+from src.fantasy_ai_lab.database.models import (
     SimulationJob, Simulation, League, Manager, Player, Roster, Lineup,
     Snapshot, Decision, Situation, Outcome, Reward, Event, Transaction
 )
-from fantasy_ai_lab.simulator.jobs import JobService
-from fantasy_ai_lab.simulator.snapshots import SnapshotService
+from src.fantasy_ai_lab.simulator.jobs import JobService
+from src.fantasy_ai_lab.simulator.snapshots import SnapshotService
 
 app = FastAPI(
     title="Fantasy AI Lab API",
@@ -43,7 +43,7 @@ class DecisionRequest(BaseModel):
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy", "timestamp": datetime.datetime.utcnow().isoformat()}
+    return {"status": "healthy", "timestamp": datetime.datetime.now(datetime.UTC).isoformat()}
 
 # --- SIMULATIONS ENDPOINTS ---
 
@@ -111,8 +111,8 @@ def get_simulation_job(id: int, db: Session = Depends(get_db)):
 
 def run_job_background(job_id: int):
     # Use localized imports / session to avoid context leakage in worker threads
-    from fantasy_ai_lab.database.connection import SessionLocal
-    from fantasy_ai_lab.simulator.jobs import JobService
+    from src.fantasy_ai_lab.database.connection import SessionLocal
+    from src.fantasy_ai_lab.simulator.jobs import JobService
     db_session = SessionLocal()
     try:
         JobService.run_job(db_session, job_id)
@@ -300,7 +300,7 @@ def get_current_strategy():
 
 @app.get("/api/v1/strategy/history")
 def get_strategy_history():
-    return [{"version": "v1.0", "deployed_at": datetime.datetime.utcnow().isoformat()}]
+    return [{"version": "v1.0", "deployed_at": datetime.datetime.now(datetime.UTC).isoformat()}]
 
 @app.get("/api/v1/knowledge/similar")
 def search_similar_situations(price: float = Query(1000000.0), db: Session = Depends(get_db)):

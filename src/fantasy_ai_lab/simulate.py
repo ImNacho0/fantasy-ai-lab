@@ -1,8 +1,8 @@
 import argparse
 import sys
 import traceback
-from fantasy_ai_lab.database.connection import SessionLocal
-from fantasy_ai_lab.simulator.jobs import JobService
+from src.fantasy_ai_lab.database.connection import SessionLocal
+from src.fantasy_ai_lab.simulator.jobs import JobService
 
 def main():
     parser = argparse.ArgumentParser(
