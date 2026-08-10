@@ -6,13 +6,13 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from src.fantasy_ai_lab.database.connection import get_db, engine, Base
-from src.fantasy_ai_lab.database.models import (
+from fantasy_ai_lab.database.connection import get_db, engine, Base
+from fantasy_ai_lab.database.models import (
     SimulationJob, Simulation, League, Manager, Player, Roster, Lineup,
     Snapshot, Decision, Situation, Outcome, Reward, Event, Transaction
 )
-from src.fantasy_ai_lab.simulator.jobs import JobService
-from src.fantasy_ai_lab.simulator.snapshots import SnapshotService
+from fantasy_ai_lab.simulator.jobs import JobService
+from fantasy_ai_lab.simulator.snapshots import SnapshotService
 
 app = FastAPI(
     title="Fantasy AI Lab API",
@@ -111,8 +111,8 @@ def get_simulation_job(id: int, db: Session = Depends(get_db)):
 
 def run_job_background(job_id: int):
     # Use localized imports / session to avoid context leakage in worker threads
-    from src.fantasy_ai_lab.database.connection import SessionLocal
-    from src.fantasy_ai_lab.simulator.jobs import JobService
+    from fantasy_ai_lab.database.connection import SessionLocal
+    from fantasy_ai_lab.simulator.jobs import JobService
     db_session = SessionLocal()
     try:
         JobService.run_job(db_session, job_id)

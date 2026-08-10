@@ -1,5 +1,5 @@
-from src.fantasy_ai_lab.simulator.engine import SimulationEngine
-from src.fantasy_ai_lab.database.models import Player, Manager
+from fantasy_ai_lab.simulator.engine import SimulationEngine
+from fantasy_ai_lab.database.models import Player, Manager
 
 def test_deterministic_reproducibility(db_session):
     # Run simulation 1

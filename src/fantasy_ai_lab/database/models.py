@@ -1,7 +1,13 @@
 import datetime
 from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Text, JSON, Table
 from sqlalchemy.orm import relationship
-from src.fantasy_ai_lab.database.connection import Base
+from fantasy_ai_lab.database.connection import Base
+
+def get_utc_now():
+    return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+
+def get_utc_now():
+    return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
 
 def get_utc_now():
     return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)

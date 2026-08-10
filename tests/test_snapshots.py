@@ -1,6 +1,6 @@
-from src.fantasy_ai_lab.simulator.engine import SimulationEngine
-from src.fantasy_ai_lab.simulator.snapshots import SnapshotService
-from src.fantasy_ai_lab.database.models import League, Snapshot, Roster, Manager
+from fantasy_ai_lab.simulator.engine import SimulationEngine
+from fantasy_ai_lab.simulator.snapshots import SnapshotService
+from fantasy_ai_lab.database.models import League, Snapshot, Roster, Manager
 
 def test_snapshot_restore_fork(db_session):
     engine = SimulationEngine(seed=400)

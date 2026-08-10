@@ -1,8 +1,8 @@
 import traceback
 from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
-from src.fantasy_ai_lab.database.models import SimulationJob, Simulation, League
-from src.fantasy_ai_lab.simulator.engine import SimulationEngine
+from fantasy_ai_lab.database.models import SimulationJob, Simulation, League
+from fantasy_ai_lab.simulator.engine import SimulationEngine
 
 class JobService:
     @staticmethod
