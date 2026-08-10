@@ -6,6 +6,9 @@ from fantasy_ai_lab.database.connection import Base
 def get_utc_now():
     return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
 
+def get_utc_now():
+    return datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+
 class SimulationJob(Base):
     __tablename__ = 'simulation_jobs'
 
