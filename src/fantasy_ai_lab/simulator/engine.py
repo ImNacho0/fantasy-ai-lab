@@ -72,7 +72,10 @@ class SimulationEngine:
 
         # 3. Create Managers
         managers = []
-        strategy_types = ["Balanced", "Conservative", "Aggressive", "Trader"]
+        strategy_types = [
+            "Balanced", "Conservative", "Aggressive", "Trader",
+            "PointsMaximizer", "LongTerm", "Opportunistic", "BudgetManager", "Random"
+        ]
         for i in range(num_managers):
             strat = strategy_types[i % len(strategy_types)]
             mgr = Manager(

@@ -18,6 +18,24 @@ Este proyecto está estructurado desde el primer día para funcionar con **infra
 
 ---
 
+## 🧠 Características Clave de la Fase 2
+
+- **Estrategias Desacopladas y Configurables**: Las políticas de decisión se han separado de los agentes (`BaseStrategy`), y se rigen por pesos y tolerancias validables y serializables mediante **Pydantic**.
+- **9 Perfiles de Agentes Inteligentes**:
+  - `Conservative`: Reduce riesgos de plantilla, evita comprar lesionados y prioriza liquidez.
+  - `Aggressive`: Arriesga capital pujando fuertemente por estrellas y tolera lesiones.
+  - `Trader`: Compra jugadores infravalorados y vende durante breakouts para maximizar plusvalías.
+  - `PointsMaximizer`: Prioriza el rendimiento inmediato basándose en puntos esperados xP.
+  - `LongTerm`: Apuesta por jugadores consistentes con xP alto a largo plazo.
+  - `Opportunistic`: Rastrea y compra gangas y rebajas extremas del mercado.
+  - `BudgetManager`: Controla estrictamente el flujo de caja, restringiendo fichajes caros.
+  - `Balanced`: Combina equilibradamente todos los pesos tácticos y presupuestarios.
+  - `RandomBaseline`: Actúa de forma pseudoaleatoria determinista para servir de línea de comparación.
+- **Contextos y Decisiones Enriquecidos**: Cada decisión guarda las estimaciones previas (`expected_outcome` como puntos, crecimiento y riesgo), el nivel de confianza (entre 0.0 y 1.0), todas las opciones viables (`availableActions`) y alternativas descartadas (`alternativeActions`).
+- **Sistema Multicriterio de Recompensas (Rewards)**: Evalúa cada decisión bajo 4 perfiles independientes y persistidos de manera separada de los resultados físicos (`Outcome`): `points-focused`, `wealth-focused`, `balanced`, y `risk-adjusted`.
+
+---
+
 ## 🛠️ Stack Tecnológico
 
 - **Python 3.12**
@@ -57,7 +75,10 @@ fantasy-ai-lab/
 │   │   │   └── provider.py      # Generador de datos reproducibles (MockDataProvider)
 │   │   │
 │   │   ├── agents/
-│   │   │   └── base.py          # Lógica básica de alineación y mercado de los bots
+│   │   │   └── base.py          # Interfaz BaseAgent
+│   │   │
+│   │   ├── strategy/
+│   │   │   └── base.py          # Clase abstracta BaseStrategy y perfiles configurables de la Fase 2
 │   │   │
 │   │   ├── database/
 │   │   │   ├── connection.py    # Conexión ORM y soporte de motores
@@ -66,7 +87,7 @@ fantasy-ai-lab/
 │   │   ├── config.py            # Configuraciones y variables de entorno
 │   │   └── simulate.py          # CLI de ejecución del simulador
 │
-├── tests/                       # Suite de tests con pytest (test_core, test_market, test_snapshots, etc.)
+├── tests/                       # Suite de tests con pytest (test_core, test_phase2, etc.)
 ├── migrations/                  # Versiones de esquema de base de datos Alembic
 ├── docs/                        # Documentación detallada por módulo
 ├── requirements.txt             # Dependencias del proyecto
@@ -81,7 +102,7 @@ fantasy-ai-lab/
 
 ### 1. Clonar el repositorio y configurar variables de entorno
 ```bash
-git checkout feature/initial-simulator
+git checkout feature/phase-2-agents-strategies
 python setup_env.py
 ```
 El archivo `.env` se creará automáticamente con SQLite local por defecto:
@@ -93,9 +114,9 @@ pip install -r requirements.txt
 alembic upgrade head
 ```
 
-### 3. Ejecutar una simulación de prueba desde CLI
+### 3. Ejecutar una simulación de prueba con múltiples agentes autónomos desde CLI
 ```bash
-PYTHONPATH=src python -m fantasy_ai_lab.simulate --leagues 5 --matchdays 4 --seed 42
+PYTHONPATH=src python -m fantasy_ai_lab.simulate --leagues 3 --matchdays 5 --seed 42
 ```
 
 ### 4. Levantar la API de FastAPI y el Dashboard Web
@@ -137,3 +158,7 @@ Para comprender a fondo cada aspecto del laboratorio, consulta los documentos de
 - [Endpoints de la API](docs/api.md)
 - [Snapshots, Forks y Replays](docs/snapshots.md)
 - [Integración con GitHub Actions](docs/github-actions.md)
+- [Agentes Autónomos (Fase 2)](docs/agents.md)
+- [Estrategias Configurables (Fase 2)](docs/strategies.md)
+- [Estructura de Decisiones (Fase 2)](docs/decisions.md)
+- [Sistema de Recompensas (Fase 2)](docs/rewards.md)
