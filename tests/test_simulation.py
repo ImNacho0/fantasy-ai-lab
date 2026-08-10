@@ -1,6 +1,6 @@
-from src.fantasy_ai_lab.simulator.engine import SimulationEngine
-from src.fantasy_ai_lab.simulator.matchday import MatchdayEngine
-from src.fantasy_ai_lab.database.models import Matchday, Event, Player, Decision
+from fantasy_ai_lab.simulator.engine import SimulationEngine
+from fantasy_ai_lab.simulator.matchday import MatchdayEngine
+from fantasy_ai_lab.database.models import Matchday, Event, Player, Decision
 
 def test_simulate_matchday(db_session):
     engine = SimulationEngine(seed=100)

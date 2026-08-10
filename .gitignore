@@ -15,6 +15,12 @@ htmlcov/
 *.sqlite
 *.sqlite3
 
+# Python packages
+*.egg-info/
+.eggs/
+build/
+dist/
+
 # IDEs
 .vscode/
 .idea/

@@ -1,6 +1,6 @@
-from src.fantasy_ai_lab.simulator.engine import SimulationEngine
-from src.fantasy_ai_lab.simulator.market import MarketEngine
-from src.fantasy_ai_lab.database.models import Bid, Transaction, Roster, Manager, Player
+from fantasy_ai_lab.simulator.engine import SimulationEngine
+from fantasy_ai_lab.simulator.market import MarketEngine
+from fantasy_ai_lab.database.models import Bid, Transaction, Roster, Manager, Player
 
 def test_market_resolve_bids(db_session):
     engine = SimulationEngine(seed=300)

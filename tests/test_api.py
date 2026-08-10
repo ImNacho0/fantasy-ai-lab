@@ -1,5 +1,5 @@
 from fastapi.testclient import TestClient
-from src.fantasy_ai_lab.api.main import app
+from fantasy_ai_lab.api.main import app
 
 client = TestClient(app)
 
