@@ -19,6 +19,7 @@ from fantasy_ai_lab.simulator.events import EventEngine
 from fantasy_ai_lab.knowledge.memory import KnowledgeService
 from fantasy_ai_lab.training.evaluation import EvaluationService
 from fantasy_ai_lab.training.tournaments import TournamentService
+from fantasy_ai_lab.integration.fantasy_manager import FantasyManagerAdapter
 
 app = FastAPI(
     title="Fantasy AI Lab API",
@@ -354,7 +355,24 @@ def get_recommendation(payload: DecisionRequest, db: Session = Depends(get_db)):
         "sampleSize": historical_memory["sample_size"],
         "historicalMemory": historical_memory,
         "strategyVersion": "v1.0",
+        "mode": FantasyManagerAdapter.MODE,
+        "execution": {"allowed": False, "owner": "fantasy-manager"},
     }
+
+@app.get("/api/v1/integration/fantasy-manager/status")
+def fantasy_manager_integration_status():
+    return {
+        "provider": "fantasy-manager",
+        "mode": FantasyManagerAdapter.MODE,
+        "capabilities": ["snapshot_ingest", "recommendation", "historical_evidence"],
+        "execution": {"allowed": False, "owner": "fantasy-manager"},
+    }
+
+@app.post("/api/v1/integration/fantasy-manager/decision")
+def fantasy_manager_decision(payload: DecisionRequest, db: Session = Depends(get_db)):
+    """Analyze a fantasy-manager snapshot without mutating league state."""
+    snapshot = payload.model_dump(by_alias=True)
+    return FantasyManagerAdapter.recommend(db, snapshot)
 
 @app.post("/api/v1/decisions/{id}/counterfactuals")
 def create_counterfactuals(id: int, payload: CounterfactualRequest, db: Session = Depends(get_db)):

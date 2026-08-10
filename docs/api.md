@@ -24,7 +24,11 @@ La API de FastAPI actúa como la interfaz de consulta y simulación interactiva.
 - **`POST /api/v1/snapshots/{id}/restore`**: Sobrescribe el estado activo de la liga con el guardado en el snapshot.
 - **`POST /api/v1/snapshots/{id}/fork`**: Crea una nueva bifurcación (`League` independiente) a partir de un snapshot con un nuevo nombre.
 
-### 5. Integración con `fantasy-manager` (Recomendación de Estrategia)
+### 5. Integración con `fantasy-manager` (solo lectura)
+- **`GET /api/v1/integration/fantasy-manager/status`**: Expone capacidades y confirma que el laboratorio no ejecuta acciones reales.
+- **`POST /api/v1/integration/fantasy-manager/decision`**: Recibe un snapshot desacoplado (`leagueState`, `market`, `team`, `lineup`, `context`), normaliza features, consulta memoria y devuelve una recomendación con evidencia. La ejecución pertenece a `fantasy-manager`.
+
+### 5.1 Recomendación de Estrategia
 - **`POST /api/v1/decision`**: Recibe el estado real o simulado de una liga, busca situaciones similares en la base de datos de simulación y devuelve una recomendación explicada con nivel de confianza.
 - **`GET /api/v1/knowledge/similar`**: Busca casos históricos cercanos a un precio y agrega evidencia por acción.
 - **`POST /api/v1/knowledge/similar`**: Busca situaciones usando un objeto completo de features; admite filtros por acción, estrategia, versión, dataset y distancia máxima.
