@@ -334,6 +334,9 @@ class StrategyVersion(Base):
     version = Column(String(50), nullable=False)
     parameters = Column(JSON, nullable=True)
     is_active = Column(Boolean, default=True)
+    lifecycle_status = Column(String(50), default='candidate')  # candidate, validated, promoted, archived
+    parent_version = Column(String(50), nullable=True)
+    promoted_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=get_utc_now)
 
 
